@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'eight_meter_training_view.dart';
 
 /// Landing page showing training mode options
 class LandingPage extends StatelessWidget {
@@ -28,8 +29,11 @@ class LandingPage extends StatelessWidget {
               icon: Icons.sports,
               color: Colors.blue,
               onTap: () {
-                // TODO: Navigate to 8 Meter Practice
-                _showComingSoon(context, '8 Meter Practice');
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const EightMeterTrainingView(),
+                  ),
+                );
               },
             ),
             const SizedBox(height: 16),
