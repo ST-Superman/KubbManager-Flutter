@@ -107,14 +107,14 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
         title: const Text('8 Meter Practice'),
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Header
-            const Icon(Icons.sports, size: 80, color: Colors.blue),
-            const SizedBox(height: 24),
+            const Icon(Icons.sports, size: 60, color: Colors.blue),
+            const SizedBox(height: 16),
             Text(
               'Set Your Target',
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -125,12 +125,12 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
             const SizedBox(height: 8),
             Text(
               'How many batons would you like to throw?',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 48),
+            const SizedBox(height: 24),
 
             // Current target with +/- buttons
             Card(
@@ -193,7 +193,7 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
                   ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
 
             // Preset target buttons
             Text(
@@ -203,7 +203,7 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
                   ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -241,7 +241,7 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
               }).toList(),
             ),
             
-            const Spacer(),
+            const SizedBox(height: 32),
 
             // Start button
             ElevatedButton(
@@ -360,12 +360,17 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              setState(() {
-                _session.startNextRound();
-              });
-              context.read<SessionManager>().updatePracticeSession(_session);
+            onPressed: () async {
+              // Start next round BEFORE closing dialog
+              _session.startNextRound();
+              await context.read<SessionManager>().updatePracticeSession(_session);
+              
+              if (mounted) {
+                Navigator.of(context).pop();
+                setState(() {
+                  // Force rebuild with new round
+                });
+              }
             },
             child: const Text('Next Round'),
           ),
