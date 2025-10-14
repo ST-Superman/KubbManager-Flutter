@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'eight_meter_training_view.dart';
+import 'eight_meter_training_enhanced.dart';
 
 /// Landing page showing training mode options
 class LandingPage extends StatelessWidget {
@@ -29,11 +30,7 @@ class LandingPage extends StatelessWidget {
               icon: Icons.sports,
               color: Colors.blue,
               onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const EightMeterTrainingView(),
-                  ),
-                );
+                _showModeSelection(context);
               },
             ),
             const SizedBox(height: 16),
@@ -99,6 +96,94 @@ class LandingPage extends StatelessWidget {
       SnackBar(
         content: Text('$feature - Coming Soon!'),
         duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showModeSelection(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Choose Your Mode',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            
+            // Standard Mode
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.sports, color: Colors.blue, size: 40),
+                title: const Text('Standard Mode',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Simple and straightforward'),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const EightMeterTrainingView(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // Enhanced Mode
+            Card(
+              elevation: 4,
+              color: Colors.blue.shade50,
+              child: ListTile(
+                leading: Stack(
+                  children: [
+                    const Icon(Icons.auto_awesome,
+                        color: Colors.amber, size: 40),
+                    Positioned(
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Text(
+                          'NEW',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                title: const Text('Enhanced Mode',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text(
+                    '🔥 Swipe gestures, animations, effects!'),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          const EightMeterTrainingEnhanced(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
