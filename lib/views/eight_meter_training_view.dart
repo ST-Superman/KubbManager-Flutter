@@ -95,18 +95,18 @@ class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
 
     setState(() {});
 
+    // Check if session is complete FIRST (target reached)
+    if (_session!.totalBatons >= _session!.target && !_session!.isComplete) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      _showSessionCompleteDialog();
+      return; // Session complete takes priority
+    }
+
     // Check if round is complete (6 batons thrown)
     final currentRound = _session!.currentRound;
     if (currentRound != null && currentRound.totalBatonThrows >= 6 && !currentRound.isComplete) {
       await Future.delayed(const Duration(milliseconds: 300));
       _showRoundCompleteDialog();
-      return; // Don't check session completion yet
-    }
-
-    // Check if session is complete (target reached)
-    if (_session!.totalBatons >= _session!.target && !_session!.isComplete) {
-      await Future.delayed(const Duration(milliseconds: 300));
-      _showSessionCompleteDialog();
     }
   }
 
@@ -414,7 +414,7 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
             Card(
               elevation: 4,
               child: Padding(
-                padding: const EdgeInsets.all(24.0),
+                padding: const EdgeInsets.all(16.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -422,16 +422,16 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
                     IconButton(
                       onPressed: _selectedTarget > 6 ? _decreaseTarget : null,
                       icon: const Icon(Icons.remove_circle_outline),
-                      iconSize: 48,
+                      iconSize: 40,
                       color: Colors.blue,
                     ),
-                    const SizedBox(width: 24),
+                    const SizedBox(width: 16),
                     
                     // Target number
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 32,
-                        vertical: 16,
+                        horizontal: 24,
+                        vertical: 12,
                       ),
                       decoration: BoxDecoration(
                         color: Colors.blue.withOpacity(0.1),
@@ -441,20 +441,20 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
                         '$_selectedTarget',
                         style: Theme.of(context)
                             .textTheme
-                            .displayLarge
+                            .displayMedium
                             ?.copyWith(
                               fontWeight: FontWeight.bold,
                               color: Colors.blue,
                             ),
                       ),
                     ),
-                    const SizedBox(width: 24),
+                    const SizedBox(width: 16),
                     
                     // Plus button
                     IconButton(
                       onPressed: _increaseTarget,
                       icon: const Icon(Icons.add_circle_outline),
-                      iconSize: 48,
+                      iconSize: 40,
                       color: Colors.blue,
                     ),
                   ],
@@ -488,11 +488,11 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
               children: _presetTargets.map((target) {
                 return Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    padding: const EdgeInsets.symmetric(horizontal: 3.0),
                     child: OutlinedButton(
                       onPressed: () => setState(() => _selectedTarget = target),
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 2),
                         side: BorderSide(
                           color: _selectedTarget == target
                               ? Colors.blue
@@ -506,7 +506,7 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
                       child: Text(
                         '$target',
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: _selectedTarget == target
                               ? Colors.blue
