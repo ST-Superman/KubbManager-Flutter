@@ -15,6 +15,9 @@ class EightMeterTrainingView extends StatefulWidget {
 class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
   PracticeSession? _session;
   bool _isLoading = false;
+  int _currentStreak = 0;
+  int _bestStreak = 0;
+  List<double> _accuracyHistory = [];
 
   @override
   void initState() {
@@ -31,6 +34,7 @@ class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
       // Resume existing session
       setState(() {
         _session = activeSession;
+        _updateAccuracyHistory();
         _isLoading = false;
       });
     } else {
@@ -45,7 +49,275 @@ class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
 
     setState(() {
       _session = newSession;
+      _currentStreak = 0;
+      _bestStreak = 0;
+      _accuracyHistory = [0.0];
     });
+  }
+
+  void _updateAccuracyHistory() {
+    if (_session == null) return;
+    _accuracyHistory = [];
+    int cumulativeHits = 0;
+    int cumulativeThrows = 0;
+    
+    for (var round in _session!.rounds) {
+      for (var throw_ in round.batonThrows) {
+        cumulativeThrows++;
+        if (throw_.isHit) cumulativeHits++;
+        _accuracyHistory.add(cumulativeThrows > 0 ? cumulativeHits / cumulativeThrows : 0.0);
+      }
+    }
+  }
+
+  Future<void> _onThrow(bool isHit) async {
+    if (_session == null) return;
+
+    // Record the throw
+    _session!.addBatonResult(isHit);
+    
+    // Update the session in the database
+    final sessionManager = context.read<SessionManager>();
+    await sessionManager.updatePracticeSession(_session!);
+
+    // Update streak
+    if (isHit) {
+      _currentStreak++;
+      if (_currentStreak > _bestStreak) {
+        _bestStreak = _currentStreak;
+      }
+    } else {
+      _currentStreak = 0;
+    }
+
+    // Update accuracy history
+    _updateAccuracyHistory();
+
+    setState(() {});
+
+    // Check if round is complete
+    final currentRound = _session!.currentRound;
+    if (currentRound != null && currentRound.isComplete) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      _showRoundCompleteDialog();
+    }
+
+    // Check if session is complete
+    if (_session!.isTargetReached && !_session!.isComplete) {
+      _showSessionCompleteDialog();
+    }
+  }
+
+  void _showRoundCompleteDialog() {
+    final round = _session!.currentRound;
+    if (round == null) return;
+
+    final roundIndex = _session!.rounds.indexWhere((r) => r.id == round.id);
+    if (roundIndex != -1) {
+      _session!.rounds[roundIndex].isComplete = true;
+    }
+
+    // Check for perfect round (6 for 6!)
+    final isPerfectRound = round.totalBatonThrows == 6 && round.hits == 6;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isPerfectRound ? Icons.celebration : Icons.check_circle,
+                color: isPerfectRound ? Colors.amber : Colors.green,
+                size: 64,
+              ),
+              const SizedBox(height: 16),
+              
+              // Perfect round celebration
+              if (isPerfectRound) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Colors.amber, Colors.orange],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.amber.withOpacity(0.5),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    '🏆 PERFECT 6 FOR 6! 🏆',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              
+              Text(
+                'Round ${round.roundNumber} Complete!',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 24),
+              _buildStatRow('Hits', '${round.hits}', Colors.green),
+              _buildStatRow('Misses', '${round.misses}', Colors.red),
+              _buildStatRow(
+                'Accuracy',
+                '${(round.accuracy * 100).toStringAsFixed(1)}%',
+                Colors.blue,
+              ),
+              if (round.hasBaselineClear && !isPerfectRound) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.star, color: Colors.amber, size: 24),
+                      SizedBox(width: 8),
+                      Text(
+                        'Baseline Clear!',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () async {
+                  _session!.startNextRound();
+                  await context.read<SessionManager>().updatePracticeSession(_session!);
+                  setState(() {
+                    _currentStreak = 0;
+                  });
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Next Round'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSessionCompleteDialog() {
+    final totalThrows = _session!.totalBatons;
+    final totalHits = _session!.totalKubbs;
+    final overallAccuracy = totalThrows > 0 ? totalHits / totalThrows : 0.0;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.flag, color: Colors.green, size: 64),
+              const SizedBox(height: 16),
+              Text(
+                'Session Complete!',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 24),
+              _buildStatRow('Total Throws', '$totalThrows', Colors.blue),
+              _buildStatRow('Total Hits', '$totalHits', Colors.green),
+              _buildStatRow(
+                'Overall Accuracy',
+                '${(overallAccuracy * 100).toStringAsFixed(1)}%',
+                Colors.orange,
+              ),
+              _buildStatRow('Best Streak', '$_bestStreak', Colors.purple),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        await context.read<SessionManager>().completePracticeSession();
+                        Navigator.of(context).pop();
+                        Navigator.of(context).pop();
+                      },
+                      child: const Text('Finish'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        await context.read<SessionManager>().completePracticeSession();
+                        Navigator.of(context).pop();
+                        await _startNewSession(_session!.target);
+                      },
+                      child: const Text('New Session'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatRow(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -62,6 +334,10 @@ class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
 
     return _PracticeSessionScreen(
       session: _session!,
+      currentStreak: _currentStreak,
+      bestStreak: _bestStreak,
+      accuracyHistory: _accuracyHistory,
+      onThrow: _onThrow,
       onExit: () {
         setState(() => _session = null);
         Navigator.of(context).pop();
@@ -266,10 +542,18 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
 /// Main practice session screen
 class _PracticeSessionScreen extends StatefulWidget {
   final PracticeSession session;
+  final int currentStreak;
+  final int bestStreak;
+  final List<double> accuracyHistory;
+  final Function(bool) onThrow;
   final VoidCallback onExit;
 
   const _PracticeSessionScreen({
     required this.session,
+    required this.currentStreak,
+    required this.bestStreak,
+    required this.accuracyHistory,
+    required this.onThrow,
     required this.onExit,
   });
 
@@ -492,7 +776,7 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Stats card
+                  // Stats card with streak
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(20.0),
@@ -518,6 +802,44 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
                               ),
                             ],
                           ),
+                          // Streak counter
+                          if (widget.currentStreak > 0) ...[
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Colors.orange, Colors.red],
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.local_fire_department, color: Colors.white, size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Streak: ${widget.currentStreak}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  if (widget.bestStreak > 0) ...[
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '(Best: ${widget.bestStreak})',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -542,13 +864,38 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Visual: 5 Kubbs on baseline
-                    _KubbsVisual(hitCount: currentRound.hits),
+                    // Visual: Enhanced kubbs with king kubb
+                    _EnhancedKubbsVisual(hitCount: currentRound.hits),
                     const SizedBox(height: 24),
 
                     // Visual: Batons thrown this round
                     _BatonsVisual(batonThrows: currentRound.batonThrows),
                     const SizedBox(height: 24),
+
+                    // Live accuracy chart
+                    if (widget.accuracyHistory.isNotEmpty)
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Live Accuracy',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              SizedBox(
+                                height: 200,
+                                child: _AccuracyChart(accuracyHistory: widget.accuracyHistory),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
 
                   // Hit/Miss buttons
@@ -556,7 +903,7 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
                     children: [
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: () => _recordThrow(false),
+                          onPressed: () => widget.onThrow(false),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,
                             foregroundColor: Colors.white,
@@ -578,7 +925,7 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
                       const SizedBox(width: 16),
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: () => _recordThrow(true),
+                          onPressed: () => widget.onThrow(true),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green,
                             foregroundColor: Colors.white,
@@ -818,3 +1165,360 @@ class _BatonsVisual extends StatelessWidget {
   }
 }
 
+
+/// Enhanced kubbs visual with king kubb
+class _EnhancedKubbsVisual extends StatelessWidget {
+  final int hitCount;
+  
+  const _EnhancedKubbsVisual({required this.hitCount});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasKingThrow = hitCount >= 5;
+    
+    return Column(
+      children: [
+        const Text(
+          'Baseline Kubbs',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        const SizedBox(height: 12),
+        
+        // 5 baseline kubbs with realistic wooden appearance
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(5, (index) {
+            final isHit = index < hitCount;
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6.0),
+              child: Container(
+                width: 44,
+                height: 70,
+                decoration: BoxDecoration(
+                  // Gradient to look like wood
+                  gradient: isHit
+                      ? LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Colors.grey.shade400,
+                            Colors.grey.shade600,
+                          ],
+                        )
+                      : LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Colors.brown.shade400,
+                            Colors.brown.shade700,
+                          ],
+                        ),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isHit
+                        ? Colors.grey.shade700
+                        : Colors.brown.shade900,
+                    width: 2,
+                  ),
+                  boxShadow: isHit
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.4),
+                            blurRadius: 6,
+                            offset: const Offset(2, 3),
+                          ),
+                        ],
+                ),
+                child: isHit
+                    ? Stack(
+                        children: [
+                          // Knocked over effect - draw diagonal lines
+                          CustomPaint(
+                            painter: _KnockedKubbPainter(),
+                            size: const Size(44, 70),
+                          ),
+                          Center(
+                            child: Icon(
+                              Icons.close,
+                              color: Colors.grey.shade800,
+                              size: 30,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 30,
+                              height: 3,
+                              decoration: BoxDecoration(
+                                color: Colors.brown.shade900,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              width: 30,
+                              height: 3,
+                              decoration: BoxDecoration(
+                                color: Colors.brown.shade900,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              width: 30,
+                              height: 3,
+                              decoration: BoxDecoration(
+                                color: Colors.brown.shade900,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+            );
+          }),
+        ),
+        
+        // King kubb appears after 5 hits
+        if (hasKingThrow) ...[
+          const SizedBox(height: 20),
+          const Text(
+            '⭐ KING KUBB ⭐',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: Colors.amber,
+            ),
+          ),
+          const SizedBox(height: 8),
+          
+          // King kubb - taller and decorated
+          Container(
+            width: 52,
+            height: 90,
+            decoration: BoxDecoration(
+              gradient: hitCount >= 6
+                  ? LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.grey.shade400,
+                        Colors.grey.shade600,
+                      ],
+                    )
+                  : LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.amber.shade300,
+                        Colors.amber.shade700,
+                      ],
+                    ),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: hitCount >= 6
+                    ? Colors.grey.shade700
+                    : Colors.amber.shade900,
+                width: 3,
+              ),
+              boxShadow: hitCount >= 6
+                  ? []
+                  : [
+                      BoxShadow(
+                        color: Colors.amber.withOpacity(0.5),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                    ],
+            ),
+            child: hitCount >= 6
+                ? Center(
+                    child: Icon(
+                      Icons.close,
+                      color: Colors.grey.shade800,
+                      size: 40,
+                    ),
+                  )
+                : Stack(
+                    children: [
+                      // Crown on top
+                      Positioned(
+                        top: 8,
+                        left: 0,
+                        right: 0,
+                        child: Icon(
+                          Icons.emoji_events,
+                          color: Colors.amber.shade900,
+                          size: 28,
+                        ),
+                      ),
+                      // Decorative lines
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(
+                            4,
+                            (i) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              child: Container(
+                                width: 36,
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.shade900,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Custom painter for knocked down kubb effect
+class _KnockedKubbPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.grey.shade700
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    // Draw diagonal lines to show it's knocked over
+    canvas.drawLine(
+      Offset(size.width * 0.3, size.height * 0.3),
+      Offset(size.width * 0.7, size.height * 0.7),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Live accuracy chart with 50% target line
+class _AccuracyChart extends StatelessWidget {
+  final List<double> accuracyHistory;
+
+  const _AccuracyChart({required this.accuracyHistory});
+
+  @override
+  Widget build(BuildContext context) {
+    if (accuracyHistory.isEmpty) {
+      return const Center(
+        child: Text('Start throwing to see your accuracy!'),
+      );
+    }
+
+    return CustomPaint(
+      size: const Size(double.infinity, 200),
+      painter: _AccuracyChartPainter(accuracyHistory: accuracyHistory),
+    );
+  }
+}
+
+/// Custom painter for accuracy chart with 50% target line
+class _AccuracyChartPainter extends CustomPainter {
+  final List<double> accuracyHistory;
+
+  _AccuracyChartPainter({required this.accuracyHistory});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (accuracyHistory.isEmpty) return;
+
+    final paint = Paint()
+      ..color = Colors.blue
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke;
+
+    final fillPaint = Paint()
+      ..color = Colors.blue.withOpacity(0.2)
+      ..style = PaintingStyle.fill;
+
+    final targetPaint = Paint()
+      ..color = Colors.orange
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    final path = Path();
+    final fillPath = Path();
+
+    final stepX = size.width / (accuracyHistory.length - 1);
+    final maxY = size.height - 40;
+
+    // Start the path
+    path.moveTo(0, maxY - (accuracyHistory[0] * maxY));
+    fillPath.moveTo(0, maxY);
+    fillPath.lineTo(0, maxY - (accuracyHistory[0] * maxY));
+
+    for (int i = 1; i < accuracyHistory.length; i++) {
+      final x = i * stepX;
+      final y = maxY - (accuracyHistory[i] * maxY);
+      
+      path.lineTo(x, y);
+      fillPath.lineTo(x, y);
+    }
+
+    // Close the fill path
+    fillPath.lineTo(size.width, maxY);
+    fillPath.close();
+
+    // Draw 50% target line
+    final targetY = maxY - (0.5 * maxY);
+    canvas.drawLine(
+      Offset(0, targetY),
+      Offset(size.width, targetY),
+      targetPaint,
+    );
+
+    // Draw target line label
+    final textPainter = TextPainter(
+      text: const TextSpan(
+        text: '50% Target',
+        style: TextStyle(
+          color: Colors.orange,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(canvas, Offset(8, targetY - 16));
+
+    // Draw filled area first
+    canvas.drawPath(fillPath, fillPaint);
+    
+    // Draw line
+    canvas.drawPath(path, paint);
+
+    // Draw data points
+    final pointPaint = Paint()
+      ..color = Colors.blue
+      ..style = PaintingStyle.fill;
+
+    for (int i = 0; i < accuracyHistory.length; i++) {
+      final x = i * stepX;
+      final y = maxY - (accuracyHistory[i] * maxY);
+      
+      canvas.drawCircle(Offset(x, y), 4, pointPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
