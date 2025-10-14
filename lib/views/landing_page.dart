@@ -28,7 +28,7 @@ class LandingPage extends StatelessWidget {
               title: '8 Meter Practice',
               description:
                   'Practice throwing from 8 meters. Track your accuracy and build consistency.',
-              icon: Icons.sports,
+              imagePath: 'assets/icons/8meter.png',
               color: Colors.blue,
               onTap: () {
                 _showModeSelection(context);
@@ -40,7 +40,7 @@ class LandingPage extends StatelessWidget {
               title: 'Inkast Blast',
               description:
                   'Practice throwing inkast kubbs with varying difficulty levels.',
-              icon: Icons.speed,
+              imagePath: 'assets/icons/inkastblast.png',
               color: Colors.orange,
               onTap: () {
                 // TODO: Navigate to Inkast Blast
@@ -53,7 +53,7 @@ class LandingPage extends StatelessWidget {
               title: 'Full Game Sim',
               description:
                   'Simulate a full game with attacking, inkast, and field kubb phases.',
-              icon: Icons.military_tech,
+              imagePath: 'assets/icons/kubbEquipment.png',
               color: Colors.green,
               onTap: () {
                 // TODO: Navigate to Full Game Sim
@@ -210,10 +210,11 @@ class _AppHeader extends StatelessWidget {
             color: Theme.of(context).colorScheme.primaryContainer,
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            Icons.sports_esports,
-            size: 60,
-            color: Theme.of(context).colorScheme.primary,
+          child: Image.asset(
+            'assets/icons/kubbTrainer.png',
+            width: 60,
+            height: 60,
+            fit: BoxFit.contain,
           ),
         ),
         const SizedBox(height: 16),
@@ -244,17 +245,19 @@ class _AppHeader extends StatelessWidget {
 class _TrainingModeCard extends StatelessWidget {
   final String title;
   final String description;
-  final IconData icon;
+  final IconData? icon;  // Now optional
+  final String? imagePath;  // New: path to custom image
   final Color color;
   final VoidCallback onTap;
 
   const _TrainingModeCard({
     required this.title,
     required this.description,
-    required this.icon,
+    this.icon,  // Optional
+    this.imagePath,  // Optional
     required this.color,
     required this.onTap,
-  });
+  }) : assert(icon != null || imagePath != null, 'Either icon or imagePath must be provided');
 
   @override
   Widget build(BuildContext context) {
@@ -271,14 +274,21 @@ class _TrainingModeCard extends StatelessWidget {
                 width: 64,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  icon,
-                  size: 32,
-                  color: color,
-                ),
+                child: imagePath != null
+                    ? Image.asset(
+                        imagePath!,
+                        width: 32,
+                        height: 32,
+                        fit: BoxFit.contain,
+                      )
+                    : Icon(
+                        icon!,
+                        size: 32,
+                        color: color,
+                      ),
               ),
               const SizedBox(width: 16),
 
