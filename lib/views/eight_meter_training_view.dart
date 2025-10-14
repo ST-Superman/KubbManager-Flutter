@@ -95,15 +95,17 @@ class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
 
     setState(() {});
 
-    // Check if round is complete
+    // Check if round is complete (6 batons thrown)
     final currentRound = _session!.currentRound;
-    if (currentRound != null && currentRound.isComplete) {
-      await Future.delayed(const Duration(milliseconds: 500));
+    if (currentRound != null && currentRound.totalBatonThrows >= 6 && !currentRound.isComplete) {
+      await Future.delayed(const Duration(milliseconds: 300));
       _showRoundCompleteDialog();
+      return; // Don't check session completion yet
     }
 
-    // Check if session is complete
-    if (_session!.isTargetReached && !_session!.isComplete) {
+    // Check if session is complete (target reached)
+    if (_session!.totalBatons >= _session!.target && !_session!.isComplete) {
+      await Future.delayed(const Duration(milliseconds: 300));
       _showSessionCompleteDialog();
     }
   }
@@ -731,10 +733,12 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
         title: const Text('8 Meter Practice'),
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
         actions: [
+          // Pause Session
           IconButton(
             icon: const Icon(Icons.pause),
+            tooltip: 'Pause Session',
             onPressed: () async {
-              final shouldExit = await showDialog<bool>(
+              final shouldPause = await showDialog<bool>(
                 context: context,
                 builder: (context) => AlertDialog(
                   title: const Text('Pause Session?'),
@@ -753,8 +757,43 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
                 ),
               );
 
-              if (shouldExit == true && mounted) {
+              if (shouldPause == true && mounted) {
                 await context.read<SessionManager>().pausePracticeSession();
+                widget.onExit();
+              }
+            },
+          ),
+          // End Session
+          IconButton(
+            icon: const Icon(Icons.stop),
+            tooltip: 'End Session',
+            onPressed: () async {
+              final shouldEnd = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('End Session?'),
+                  content: const Text(
+                      'This will end the current session. Your progress will be saved.'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.red,
+                      ),
+                      child: const Text('End Session'),
+                    ),
+                  ],
+                ),
+              );
+
+              if (shouldEnd == true && mounted) {
+                // Mark session as complete and save
+                _session!.isComplete = true;
+                await context.read<SessionManager>().updatePracticeSession(_session!);
                 widget.onExit();
               }
             },
@@ -767,135 +806,128 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
           LinearProgressIndicator(
             value: _session.progressPercentage,
             backgroundColor: Colors.grey[200],
-            minHeight: 8,
+            minHeight: 6,
           ),
 
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Stats card with streak
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _StatColumn(
-                                label: 'Batons',
-                                value: '${_session.totalBatons}/${_session.target}',
-                              ),
-                              _StatColumn(
-                                label: 'Hits',
-                                value: '${_session.totalKubbs}',
-                                color: Colors.green,
-                              ),
-                              _StatColumn(
-                                label: 'Accuracy',
-                                value:
-                                    '${(_session.accuracy * 100).toStringAsFixed(1)}%',
-                                color: Colors.blue,
-                              ),
-                            ],
-                          ),
-                          // Streak counter
-                          if (widget.currentStreak > 0) ...[
-                            const SizedBox(height: 16),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [Colors.orange, Colors.red],
-                                ),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.local_fire_department, color: Colors.white, size: 20),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Streak: ${widget.currentStreak}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  if (widget.bestStreak > 0) ...[
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '(Best: ${widget.bestStreak})',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
-                        ],
+          // Compact stats with streak
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _CompactStat(
+                      label: 'Progress',
+                      value: '${_session.totalBatons}/${_session.target}',
+                    ),
+                    Container(width: 1, height: 30, color: Colors.grey[300]),
+                    _CompactStat(
+                      label: 'Hits',
+                      value: '${_session.totalKubbs}',
+                      color: Colors.green,
+                    ),
+                    Container(width: 1, height: 30, color: Colors.grey[300]),
+                    _CompactStat(
+                      label: 'Accuracy',
+                      value: '${(_session.accuracy * 100).toStringAsFixed(1)}%',
+                      color: Colors.blue,
+                    ),
+                  ],
+                ),
+                // Streak counter
+                if (widget.currentStreak > 0) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Colors.orange, Colors.red],
                       ),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Current round info
-                  if (currentRound != null) ...[
-                    Text(
-                      'Round ${currentRound.roundNumber}',
-                      style:
-                          Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${currentRound.hits} hits / ${currentRound.totalBatonThrows} throws',
-                      style: Theme.of(context).textTheme.bodyLarge,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Visual: Enhanced kubbs with king kubb
-                    _EnhancedKubbsVisual(hitCount: currentRound.hits),
-                    const SizedBox(height: 24),
-
-                    // Visual: Batons thrown this round
-                    _BatonsVisual(batonThrows: currentRound.batonThrows),
-                    const SizedBox(height: 24),
-
-                    // Live accuracy chart
-                    if (widget.accuracyHistory.isNotEmpty)
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Live Accuracy',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              SizedBox(
-                                height: 200,
-                                child: _AccuracyChart(accuracyHistory: widget.accuracyHistory),
-                              ),
-                            ],
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.local_fire_department, color: Colors.white, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Streak: ${widget.currentStreak}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
                           ),
                         ),
-                      ),
+                        if (widget.bestStreak > 0) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '(Best: ${widget.bestStreak})',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          Divider(height: 1, color: Colors.grey[300]),
+
+          // Main content area
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  // Round info
+                  if (currentRound != null) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Round ${currentRound.roundNumber}',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        const SizedBox(width: 16),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${currentRound.hits}/${currentRound.totalBatonThrows}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Kubbs visual
+                    _KubbsVisual(
+                      hitCount: currentRound.hits,
+                      totalThrowsThisRound: currentRound.totalBatonThrows,
+                    ),
+                  ],
+
+                  const Spacer(),
+
+                  // Batons visual (moved above buttons for throwing perspective)
+                  if (currentRound != null) ...[
+                    _BatonsVisual(batonThrows: currentRound.batonThrows),
+                    const SizedBox(height: 16),
                   ],
 
                   // Hit/Miss buttons
@@ -907,38 +939,46 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.all(32),
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           child: const Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.close, size: 48),
-                              SizedBox(height: 8),
+                              Icon(Icons.close, size: 40),
+                              SizedBox(height: 4),
                               Text(
                                 'Miss',
                                 style: TextStyle(
-                                    fontSize: 24, fontWeight: FontWeight.bold),
+                                    fontSize: 20, fontWeight: FontWeight.bold),
                               ),
                             ],
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton(
                           onPressed: () => widget.onThrow(true),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.all(32),
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           child: const Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.check, size: 48),
-                              SizedBox(height: 8),
+                              Icon(Icons.check, size: 40),
+                              SizedBox(height: 4),
                               Text(
                                 'Hit',
                                 style: TextStyle(
-                                    fontSize: 24, fontWeight: FontWeight.bold),
+                                    fontSize: 20, fontWeight: FontWeight.bold),
                               ),
                             ],
                           ),
@@ -946,7 +986,36 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+
+                  // Live accuracy chart at bottom
+                  if (widget.accuracyHistory.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Live Accuracy',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 100,
+                            child: _AccuracyChart(accuracyHistory: widget.accuracyHistory),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -990,13 +1059,13 @@ class _StatRow extends StatelessWidget {
   }
 }
 
-/// Stat column widget
-class _StatColumn extends StatelessWidget {
+/// Compact stat widget for top bar
+class _CompactStat extends StatelessWidget {
   final String label;
   final String value;
   final Color? color;
 
-  const _StatColumn({
+  const _CompactStat({
     required this.label,
     required this.value,
     this.color,
@@ -1005,18 +1074,18 @@ class _StatColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           value,
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: color,
               ),
         ),
-        const SizedBox(height: 4),
         Text(
           label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
         ),
@@ -1028,11 +1097,17 @@ class _StatColumn extends StatelessWidget {
 /// Visual representation of 5 kubbs on baseline
 class _KubbsVisual extends StatelessWidget {
   final int hitCount;
+  final int totalThrowsThisRound;
 
-  const _KubbsVisual({required this.hitCount});
+  const _KubbsVisual({
+    required this.hitCount, 
+    required this.totalThrowsThisRound,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final showKing = hitCount >= 5 && totalThrowsThisRound < 6;
+    
     return Column(
       children: [
         Text(
@@ -1043,43 +1118,166 @@ class _KubbsVisual extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: List.generate(5, (index) {
             final isHit = index < hitCount;
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4.0),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: 50,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: isHit
-                      ? Colors.grey.withOpacity(0.3)
-                      : Colors.brown.shade700,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isHit ? Colors.grey : Colors.brown.shade900,
-                    width: 2,
-                  ),
-                ),
-                child: Center(
-                  child: isHit
-                      ? const Icon(
-                          Icons.check_circle,
-                          color: Colors.green,
-                          size: 32,
-                        )
-                      : Icon(
-                          Icons.square_rounded,
-                          color: Colors.brown.shade400,
-                          size: 24,
+            // Random orientation for each kubb (consistent per index)
+            final isBlueOnTop = (index % 2 == 0);
+            
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.easeInOut,
+                  transform: isHit 
+                    ? Matrix4.rotationZ(0.5) // Fall down when hit
+                    : Matrix4.identity(),
+                  child: Stack(
+                    children: [
+                      // Kubb block with random orientation
+                      _KubbBlock(isHit: isHit, isBlueOnTop: isBlueOnTop),
+                      // Hit indicator overlay
+                      if (isHit)
+                        Positioned(
+                          top: 2,
+                          right: 2,
+                          child: Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 1),
+                            ),
+                            child: const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 12,
+                            ),
+                          ),
                         ),
+                    ],
+                  ),
                 ),
               ),
             );
           }),
         ),
+        
+        // King kubb appears when 5 baseline kubbs are hit and baton remains
+        if (showKing) ...[
+          const SizedBox(height: 16),
+          const Text(
+            '⭐ KING KUBB ⭐',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Colors.amber,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _KingKubbBlock(),
+        ],
       ],
+    );
+  }
+}
+
+/// Custom kubb block widget using PNG assets
+class _KubbBlock extends StatelessWidget {
+  final bool isHit;
+  final bool isBlueOnTop;
+
+  const _KubbBlock({required this.isHit, required this.isBlueOnTop});
+
+  @override
+  Widget build(BuildContext context) {
+    // Choose image based on hit status and orientation
+    String imagePath;
+    if (isHit) {
+      // Use knocked down kubb images randomly
+      imagePath = isBlueOnTop ? 'assets/images/sw_down_kubb1.png' : 'assets/images/sw_down_kubb2.png';
+    } else {
+      // Use standing kubb images randomly
+      imagePath = isBlueOnTop ? 'assets/images/sw_kubb1.png' : 'assets/images/sw_kubb2.png';
+    }
+
+    return Container(
+      width: 45,
+      height: 70,
+      child: Image.asset(
+        imagePath,
+        width: 45,
+        height: 70,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback to simple colored rectangle if image fails to load
+          return Container(
+            width: 45,
+            height: 70,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.black87, width: 1),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Column(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    height: 35,
+                    color: isBlueOnTop ? Colors.blue.shade700 : Colors.yellow.shade600,
+                  ),
+                  Container(
+                    width: double.infinity,
+                    height: 35,
+                    color: isBlueOnTop ? Colors.yellow.shade600 : Colors.blue.shade700,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Custom king kubb block widget using PNG asset
+class _KingKubbBlock extends StatelessWidget {
+  const _KingKubbBlock();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 50,
+      height: 100,
+      child: Image.asset(
+        'assets/images/sw_king.png',
+        width: 50,
+        height: 100,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback to simple dark grey rectangle if image fails to load
+          return Container(
+            width: 50,
+            height: 100,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              color: Colors.grey.shade800,
+              border: Border.all(color: Colors.black87, width: 1),
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.stars,
+                color: Colors.amber,
+                size: 24,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -1115,299 +1313,122 @@ class _BatonsVisual extends StatelessWidget {
                 duration: const Duration(milliseconds: 300),
                 width: 40,
                 height: 50,
-                decoration: BoxDecoration(
-                  color: hasThrow
-                      ? (isHit ? Colors.green : Colors.red)
-                      : Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: hasThrow
-                        ? (isHit
-                            ? Colors.green.shade700
-                            : Colors.red.shade700)
-                        : Colors.grey.shade400,
-                    width: 2,
-                  ),
-                ),
-                child: Center(
-                  child: hasThrow
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              isHit ? Icons.check : Icons.close,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                            if (isKingThrow)
-                              const Icon(
-                                Icons.stars,
-                                color: Colors.amber,
-                                size: 12,
-                              ),
-                          ],
-                        )
-                      : Text(
-                          '${index + 1}',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                ),
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
-}
-
-
-/// Enhanced kubbs visual with king kubb
-class _EnhancedKubbsVisual extends StatelessWidget {
-  final int hitCount;
-  
-  const _EnhancedKubbsVisual({required this.hitCount});
-
-  @override
-  Widget build(BuildContext context) {
-    final hasKingThrow = hitCount >= 5;
-    
-    return Column(
-      children: [
-        const Text(
-          'Baseline Kubbs',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        const SizedBox(height: 12),
-        
-        // 5 baseline kubbs with realistic wooden appearance
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(5, (index) {
-            final isHit = index < hitCount;
-
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6.0),
-              child: Container(
-                width: 44,
-                height: 70,
-                decoration: BoxDecoration(
-                  // Gradient to look like wood
-                  gradient: isHit
-                      ? LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Colors.grey.shade400,
-                            Colors.grey.shade600,
-                          ],
-                        )
-                      : LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Colors.brown.shade400,
-                            Colors.brown.shade700,
-                          ],
-                        ),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: isHit
-                        ? Colors.grey.shade700
-                        : Colors.brown.shade900,
-                    width: 2,
-                  ),
-                  boxShadow: isHit
-                      ? []
-                      : [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.4),
-                            blurRadius: 6,
-                            offset: const Offset(2, 3),
-                          ),
-                        ],
-                ),
-                child: isHit
+                child: hasThrow
                     ? Stack(
                         children: [
-                          // Knocked over effect - draw diagonal lines
-                          CustomPaint(
-                            painter: _KnockedKubbPainter(),
-                            size: const Size(44, 70),
+                          // Custom baton design
+                          _BatonIcon(isHit: isHit),
+                          // Hit/Miss indicator overlay
+                          Positioned(
+                            top: 2,
+                            right: 2,
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: isHit ? Colors.green : Colors.red,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 1),
+                              ),
+                              child: Icon(
+                                isHit ? Icons.check : Icons.close,
+                                color: Colors.white,
+                                size: 10,
+                              ),
+                            ),
                           ),
-                          Center(
-                            child: Icon(
-                              Icons.close,
-                              color: Colors.grey.shade800,
-                              size: 30,
-                            ),
-                          ),
-                        ],
-                      )
-                    : Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 30,
-                              height: 3,
-                              decoration: BoxDecoration(
-                                color: Colors.brown.shade900,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              width: 30,
-                              height: 3,
-                              decoration: BoxDecoration(
-                                color: Colors.brown.shade900,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              width: 30,
-                              height: 3,
-                              decoration: BoxDecoration(
-                                color: Colors.brown.shade900,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-              ),
-            );
-          }),
-        ),
-        
-        // King kubb appears after 5 hits
-        if (hasKingThrow) ...[
-          const SizedBox(height: 20),
-          const Text(
-            '⭐ KING KUBB ⭐',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: Colors.amber,
-            ),
-          ),
-          const SizedBox(height: 8),
-          
-          // King kubb - taller and decorated
-          Container(
-            width: 52,
-            height: 90,
-            decoration: BoxDecoration(
-              gradient: hitCount >= 6
-                  ? LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.grey.shade400,
-                        Colors.grey.shade600,
-                      ],
-                    )
-                  : LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.amber.shade300,
-                        Colors.amber.shade700,
-                      ],
-                    ),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: hitCount >= 6
-                    ? Colors.grey.shade700
-                    : Colors.amber.shade900,
-                width: 3,
-              ),
-              boxShadow: hitCount >= 6
-                  ? []
-                  : [
-                      BoxShadow(
-                        color: Colors.amber.withOpacity(0.5),
-                        blurRadius: 12,
-                        spreadRadius: 2,
-                      ),
-                    ],
-            ),
-            child: hitCount >= 6
-                ? Center(
-                    child: Icon(
-                      Icons.close,
-                      color: Colors.grey.shade800,
-                      size: 40,
-                    ),
-                  )
-                : Stack(
-                    children: [
-                      // Crown on top
-                      Positioned(
-                        top: 8,
-                        left: 0,
-                        right: 0,
-                        child: Icon(
-                          Icons.emoji_events,
-                          color: Colors.amber.shade900,
-                          size: 28,
-                        ),
-                      ),
-                      // Decorative lines
-                      Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(
-                            4,
-                            (i) => Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 3),
+                          // King throw indicator
+                          if (isKingThrow)
+                            Positioned(
+                              bottom: 2,
+                              right: 2,
                               child: Container(
-                                width: 36,
-                                height: 3,
+                                width: 12,
+                                height: 12,
                                 decoration: BoxDecoration(
-                                  color: Colors.amber.shade900,
-                                  borderRadius: BorderRadius.circular(2),
+                                  color: Colors.amber,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.stars,
+                                  color: Colors.white,
+                                  size: 8,
                                 ),
                               ),
                             ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        ],
+                        ],
+                      )
+                    : _BatonIcon(isHit: null),
+              ),
+            );
+          }),
+        ),
       ],
     );
   }
 }
 
-/// Custom painter for knocked down kubb effect
-class _KnockedKubbPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.grey.shade700
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
+/// Custom baton icon widget using PNG asset
+class _BatonIcon extends StatelessWidget {
+  final bool? isHit; // null = empty, true = hit, false = miss
 
-    // Draw diagonal lines to show it's knocked over
-    canvas.drawLine(
-      Offset(size.width * 0.3, size.height * 0.3),
-      Offset(size.width * 0.7, size.height * 0.7),
-      paint,
+  const _BatonIcon({required this.isHit});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 30,
+      height: 60,
+      child: Image.asset(
+              'assets/images/sw_baton.png',
+              width: 30,
+              height: 60,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                // Fallback to simple colored rectangle if image fails to load
+                return Container(
+                  width: 30,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: isHit == null ? Colors.grey.shade400 : Colors.black87, 
+                      width: 1
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(15),
+                    child: isHit == null 
+                      ? Container(color: Colors.grey.shade300)
+                      : Column(
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              height: 6,
+                              color: Colors.yellow.shade600,
+                            ),
+                            Expanded(
+                              child: Container(
+                                width: double.infinity,
+                                color: Colors.blue.shade600,
+                              ),
+                            ),
+                            Container(
+                              width: double.infinity,
+                              height: 6,
+                              color: Colors.yellow.shade600,
+                            ),
+                          ],
+                        ),
+                  ),
+                );
+              },
+            ),
     );
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+
 
 /// Live accuracy chart with 50% target line
 class _AccuracyChart extends StatelessWidget {

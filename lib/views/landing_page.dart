@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'eight_meter_training_view.dart';
 import 'eight_meter_training_enhanced.dart';
+import 'stats_view.dart';
 
 /// Landing page showing training mode options
 class LandingPage extends StatelessWidget {
@@ -64,7 +65,11 @@ class LandingPage extends StatelessWidget {
             // Stats Button
             OutlinedButton.icon(
               onPressed: () {
-                _showComingSoon(context, 'Statistics');
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const StatsView(),
+                  ),
+                );
               },
               icon: const Icon(Icons.bar_chart),
               label: const Text('View Statistics'),
