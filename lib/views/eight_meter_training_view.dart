@@ -84,7 +84,21 @@ class _TargetSelectionScreen extends StatefulWidget {
 class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
   int _selectedTarget = 30;
 
-  final List<int> _targetOptions = [10, 20, 30, 40, 50, 75, 100];
+  final List<int> _presetTargets = [30, 60, 90, 120];
+
+  void _decreaseTarget() {
+    setState(() {
+      if (_selectedTarget > 6) {
+        _selectedTarget -= 6;
+      }
+    });
+  }
+
+  void _increaseTarget() {
+    setState(() {
+      _selectedTarget += 6;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,55 +132,116 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
             ),
             const SizedBox(height: 48),
 
-            // Target selection grid
-            Expanded(
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 1.5,
-                ),
-                itemCount: _targetOptions.length,
-                itemBuilder: (context, index) {
-                  final target = _targetOptions[index];
-                  final isSelected = _selectedTarget == target;
-
-                  return InkWell(
-                    onTap: () => setState(() => _selectedTarget = target),
-                    child: Container(
+            // Current target with +/- buttons
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Minus button
+                    IconButton(
+                      onPressed: _selectedTarget > 6 ? _decreaseTarget : null,
+                      icon: const Icon(Icons.remove_circle_outline),
+                      iconSize: 48,
+                      color: Colors.blue,
+                    ),
+                    const SizedBox(width: 24),
+                    
+                    // Target number
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 16,
+                      ),
                       decoration: BoxDecoration(
-                        color: isSelected
-                            ? Colors.blue
-                            : Theme.of(context).colorScheme.surfaceVariant,
+                        color: Colors.blue.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isSelected
+                      ),
+                      child: Text(
+                        '$_selectedTarget',
+                        style: Theme.of(context)
+                            .textTheme
+                            .displayLarge
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    
+                    // Plus button
+                    IconButton(
+                      onPressed: _increaseTarget,
+                      icon: const Icon(Icons.add_circle_outline),
+                      iconSize: 48,
+                      color: Colors.blue,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // Adjustment hint
+            Text(
+              'Adjust by 6',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+
+            // Preset target buttons
+            Text(
+              'Quick Select',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: _presetTargets.map((target) {
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    child: OutlinedButton(
+                      onPressed: () => setState(() => _selectedTarget = target),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: BorderSide(
+                          color: _selectedTarget == target
                               ? Colors.blue
-                              : Colors.transparent,
+                              : Colors.grey,
                           width: 2,
                         ),
+                        backgroundColor: _selectedTarget == target
+                            ? Colors.blue.withOpacity(0.1)
+                            : null,
                       ),
-                      child: Center(
-                        child: Text(
-                          '$target',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineMedium
-                              ?.copyWith(
-                                color: isSelected
-                                    ? Colors.white
-                                    : Theme.of(context).colorScheme.onSurface,
-                                fontWeight: FontWeight.bold,
-                              ),
+                      child: Text(
+                        '$target',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: _selectedTarget == target
+                              ? Colors.blue
+                              : Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              }).toList(),
             ),
-            const SizedBox(height: 24),
+            
+            const Spacer(),
 
             // Start button
             ElevatedButton(
