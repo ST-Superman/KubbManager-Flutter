@@ -181,6 +181,45 @@ class DatabaseService {
     );
   }
 
+  /// Delete multiple practice sessions by IDs
+  Future<int> deletePracticeSessions(List<String> ids) async {
+    if (ids.isEmpty) return 0;
+    final db = await database;
+    int count = 0;
+    for (String id in ids) {
+      count += await db.delete(
+        'practice_sessions',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+    return count;
+  }
+
+  /// Delete all practice sessions (with optional filter by session type)
+  Future<int> deleteAllPracticeSessions({SessionType? sessionType}) async {
+    final db = await database;
+    if (sessionType != null) {
+      return await db.delete(
+        'practice_sessions',
+        where: 'sessionType = ?',
+        whereArgs: [sessionType.name],
+      );
+    } else {
+      return await db.delete('practice_sessions');
+    }
+  }
+
+  /// Delete practice sessions older than a given date
+  Future<int> deletePracticeSessionsOlderThan(DateTime date) async {
+    final db = await database;
+    return await db.delete(
+      'practice_sessions',
+      where: 'date < ?',
+      whereArgs: [date.toIso8601String()],
+    );
+  }
+
   /// Get practice sessions by date range
   Future<List<PracticeSession>> getPracticeSessionsByDateRange(
     DateTime startDate,
@@ -251,6 +290,22 @@ class DatabaseService {
       'inkast_blast_sessions',
       where: 'id = ?',
       whereArgs: [id],
+    );
+  }
+
+  /// Delete all inkast blast sessions
+  Future<int> deleteAllInkastBlastSessions() async {
+    final db = await database;
+    return await db.delete('inkast_blast_sessions');
+  }
+
+  /// Delete inkast blast sessions older than a given date
+  Future<int> deleteInkastBlastSessionsOlderThan(DateTime date) async {
+    final db = await database;
+    return await db.delete(
+      'inkast_blast_sessions',
+      where: 'date < ?',
+      whereArgs: [date.toIso8601String()],
     );
   }
 

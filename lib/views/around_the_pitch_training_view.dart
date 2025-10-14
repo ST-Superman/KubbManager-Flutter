@@ -104,6 +104,12 @@ class _AroundThePitchTrainingViewState extends State<AroundThePitchTrainingView>
         .where((s) => s.isComplete && s.sessionType == SessionType.aroundThePitch)
         .toList();
     
+    // Debug logging to verify filtering
+    debugPrint('🔍 Around the Pitch Stats:');
+    debugPrint('   Total sessions: ${allSessions.length}');
+    debugPrint('   Around the Pitch sessions: ${aroundPitchSessions.length}');
+    debugPrint('   Standard sessions: ${allSessions.where((s) => s.sessionType == SessionType.standard).length}');
+    
     int? bestScore;
     double? avgScore;
     

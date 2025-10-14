@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../services/session_manager.dart';
+import '../services/database_service.dart';
 import '../models/practice_session.dart';
 import '../models/inkast_blast_session.dart';
 
@@ -40,6 +41,190 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     setState(() => _isLoading = false);
   }
 
+  void _showDataManagementDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.delete_sweep, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Manage Data'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Delete training data:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            _buildDataOption(
+              'Clear All 8M Training',
+              '${_allSessions.where((s) => s.sessionType == SessionType.standard).length} sessions',
+              Colors.blue,
+              () => _confirmDelete('all_8m'),
+            ),
+            const SizedBox(height: 8),
+            _buildDataOption(
+              'Clear Around the Pitch',
+              '${_allSessions.where((s) => s.sessionType == SessionType.aroundThePitch).length} sessions',
+              Colors.green,
+              () => _confirmDelete('all_around_pitch'),
+            ),
+            const SizedBox(height: 8),
+            _buildDataOption(
+              'Clear Inkast & Blast',
+              '${_allInkastBlastSessions.length} sessions',
+              Colors.deepOrange,
+              () => _confirmDelete('all_inkast_blast'),
+            ),
+            const SizedBox(height: 8),
+            _buildDataOption(
+              'Clear All Data',
+              '${_allSessions.length + _allInkastBlastSessions.length} total sessions',
+              Colors.red,
+              () => _confirmDelete('all'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDataOption(String title, String subtitle, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.delete_outline, color: color, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(String type) async {
+    Navigator.of(context).pop(); // Close first dialog
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Delete'),
+        content: Text(_getDeleteMessage(type)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _performDelete(type);
+    }
+  }
+
+  String _getDeleteMessage(String type) {
+    switch (type) {
+      case 'all_8m':
+        return 'Delete all Standard 8M Training sessions? This cannot be undone.';
+      case 'all_around_pitch':
+        return 'Delete all Around the Pitch sessions? This cannot be undone.';
+      case 'all_inkast_blast':
+        return 'Delete all Inkast & Blast sessions? This cannot be undone.';
+      case 'all':
+        return 'Delete ALL training data? This will remove all sessions and cannot be undone.';
+      default:
+        return 'Delete this data? This cannot be undone.';
+    }
+  }
+
+  Future<void> _performDelete(String type) async {
+    final db = DatabaseService.instance;
+    int deletedCount = 0;
+
+    try {
+      switch (type) {
+        case 'all_8m':
+          deletedCount = await db.deleteAllPracticeSessions(sessionType: SessionType.standard);
+          break;
+        case 'all_around_pitch':
+          deletedCount = await db.deleteAllPracticeSessions(sessionType: SessionType.aroundThePitch);
+          break;
+        case 'all_inkast_blast':
+          deletedCount = await db.deleteAllInkastBlastSessions();
+          break;
+        case 'all':
+          final practiceCount = await db.deleteAllPracticeSessions();
+          final inkastCount = await db.deleteAllInkastBlastSessions();
+          deletedCount = practiceCount + inkastCount;
+          break;
+      }
+
+      // Reload sessions
+      await _loadSessions();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ Deleted $deletedCount session(s)'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting data: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -52,6 +237,28 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
       appBar: AppBar(
         title: const Text('Statistics'),
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'manage_data') {
+                _showDataManagementDialog();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'manage_data',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_sweep, size: 20),
+                    SizedBox(width: 8),
+                    Text('Manage Data'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: [
