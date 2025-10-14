@@ -540,7 +540,15 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
                       style: Theme.of(context).textTheme.bodyLarge,
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
+
+                    // Visual: 5 Kubbs on baseline
+                    _KubbsVisual(hitCount: currentRound.hits),
+                    const SizedBox(height: 24),
+
+                    // Visual: Batons thrown this round
+                    _BatonsVisual(batonThrows: currentRound.batonThrows),
+                    const SizedBox(height: 24),
                   ],
 
                   // Hit/Miss buttons
@@ -591,28 +599,7 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 32),
-
-                  // Recent throws
-                  if (currentRound != null &&
-                      currentRound.batonThrows.isNotEmpty) ...[
-                    Text(
-                      'Recent Throws',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: currentRound.batonThrows.reversed.map((throw_) {
-                        return Chip(
-                          label: Text(throw_.isHit ? 'Hit' : 'Miss'),
-                          backgroundColor:
-                              throw_.isHit ? Colors.green : Colors.red,
-                          labelStyle: const TextStyle(color: Colors.white),
-                        );
-                      }).toList(),
-                    ),
-                  ],
+                  const SizedBox(height: 16),
                 ],
               ),
             ),
@@ -685,6 +672,146 @@ class _StatColumn extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Visual representation of 5 kubbs on baseline
+class _KubbsVisual extends StatelessWidget {
+  final int hitCount;
+
+  const _KubbsVisual({required this.hitCount});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          'Baseline Kubbs',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(5, (index) {
+            final isHit = index < hitCount;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                width: 50,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: isHit
+                      ? Colors.grey.withOpacity(0.3)
+                      : Colors.brown.shade700,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isHit ? Colors.grey : Colors.brown.shade900,
+                    width: 2,
+                  ),
+                ),
+                child: Center(
+                  child: isHit
+                      ? const Icon(
+                          Icons.check_circle,
+                          color: Colors.green,
+                          size: 32,
+                        )
+                      : Icon(
+                          Icons.square_rounded,
+                          color: Colors.brown.shade400,
+                          size: 24,
+                        ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+}
+
+/// Visual representation of batons thrown
+class _BatonsVisual extends StatelessWidget {
+  final List<BatonThrow> batonThrows;
+
+  const _BatonsVisual({required this.batonThrows});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          'Batons This Round',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(6, (index) {
+            final hasThrow = index < batonThrows.length;
+            final isHit = hasThrow ? batonThrows[index].isHit : false;
+            final isKingThrow =
+                hasThrow && batonThrows[index].throwType == ThrowType.king;
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3.0),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                width: 40,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: hasThrow
+                      ? (isHit ? Colors.green : Colors.red)
+                      : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: hasThrow
+                        ? (isHit
+                            ? Colors.green.shade700
+                            : Colors.red.shade700)
+                        : Colors.grey.shade400,
+                    width: 2,
+                  ),
+                ),
+                child: Center(
+                  child: hasThrow
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              isHit ? Icons.check : Icons.close,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            if (isKingThrow)
+                              const Icon(
+                                Icons.stars,
+                                color: Colors.amber,
+                                size: 12,
+                              ),
+                          ],
+                        )
+                      : Text(
+                          '${index + 1}',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
+              ),
+            );
+          }),
         ),
       ],
     );
