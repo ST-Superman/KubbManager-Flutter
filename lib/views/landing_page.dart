@@ -168,7 +168,7 @@ class LandingPage extends StatelessWidget {
                 title: const Text('Enhanced Mode',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: const Text(
-                    '🔥 Swipe gestures, animations, effects!'),
+                    '🔥 Animations, streaks, live graphs!'),
                 trailing: const Icon(Icons.arrow_forward_ios),
                 onTap: () {
                   Navigator.pop(context);

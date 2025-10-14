@@ -673,12 +673,63 @@ class _EnhancedPracticeScreen extends StatelessWidget {
                         const SizedBox(height: 32),
                       ],
                       
-                      // Swipe gesture area
-                      _SwipeThrowArea(
-                        onThrow: onThrow,
-                        isAnimating: isThrowingAnimation,
-                        batonAnimation: batonAnimation,
-                        lastThrowWasHit: lastThrowWasHit,
+                      // Hit/Miss buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: isThrowingAnimation
+                                  ? null
+                                  : () => onThrow(false),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.all(32),
+                                disabledBackgroundColor: Colors.grey,
+                              ),
+                              child: const Column(
+                                children: [
+                                  Icon(Icons.close, size: 48),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Miss',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: isThrowingAnimation
+                                  ? null
+                                  : () => onThrow(true),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.all(32),
+                                disabledBackgroundColor: Colors.grey,
+                              ),
+                              child: const Column(
+                                children: [
+                                  Icon(Icons.check, size: 48),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Hit',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 24),
                       
@@ -936,146 +987,6 @@ class _EnhancedBatonsVisual extends StatelessWidget {
           }),
         ),
       ],
-    );
-  }
-}
-
-/// Swipe gesture area with animated baton
-class _SwipeThrowArea extends StatefulWidget {
-  final Function(bool) onThrow;
-  final bool isAnimating;
-  final AnimationController batonAnimation;
-  final bool lastThrowWasHit;
-
-  const _SwipeThrowArea({
-    required this.onThrow,
-    required this.isAnimating,
-    required this.batonAnimation,
-    required this.lastThrowWasHit,
-  });
-
-  @override
-  State<_SwipeThrowArea> createState() => _SwipeThrowAreaState();
-}
-
-class _SwipeThrowAreaState extends State<_SwipeThrowArea> {
-  Offset? _swipeStart;
-  Offset? _swipeEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onVerticalDragStart: (details) {
-        if (!widget.isAnimating) {
-          _swipeStart = details.localPosition;
-        }
-      },
-      onVerticalDragUpdate: (details) {
-        if (!widget.isAnimating && _swipeStart != null) {
-          setState(() {
-            _swipeEnd = details.localPosition;
-          });
-        }
-      },
-      onVerticalDragEnd: (details) {
-        if (!widget.isAnimating && _swipeStart != null && _swipeEnd != null) {
-          final distance = _swipeStart!.dy - _swipeEnd!.dy;
-          
-          if (distance > 50) {
-            // Upward swipe - throw!
-            final velocity = details.velocity.pixelsPerSecond.dy.abs();
-            final isHit = velocity > 500; // Fast swipe = hit!
-            widget.onThrow(isHit);
-          }
-          
-          setState(() {
-            _swipeStart = null;
-            _swipeEnd = null;
-          });
-        }
-      },
-      child: Container(
-        height: 250,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.blue.withOpacity(0.1),
-              Colors.blue.withOpacity(0.3),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.blue, width: 3),
-        ),
-        child: Stack(
-          children: [
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.arrow_upward,
-                    size: 64,
-                    color: Colors.blue.withOpacity(0.5),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Swipe Up to Throw!',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Swipe fast for better accuracy',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.blue.shade600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            // Animated baton during throw
-            if (widget.isAnimating)
-              SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 1),
-                  end: const Offset(0, -1),
-                ).animate(CurvedAnimation(
-                  parent: widget.batonAnimation,
-                  curve: Curves.easeInOut,
-                )),
-                child: RotationTransition(
-                  turns: Tween<double>(begin: 0, end: 2).animate(
-                    widget.batonAnimation,
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 60,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: Colors.brown.shade600,
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 8,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }
