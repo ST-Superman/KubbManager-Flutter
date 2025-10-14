@@ -153,7 +153,7 @@ class _EightMeterTrainingEnhancedState
     }
 
     // Record the throw
-    _session!.addBatonThrow(isHit);
+    _session!.addBatonResult(isHit);
     
     // Update the session in the database
     final sessionManager = context.read<SessionManager>();
