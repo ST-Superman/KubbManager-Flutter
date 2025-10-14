@@ -391,7 +391,13 @@ class _TargetSelectionScreenState extends State<_TargetSelectionScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Header
-            const Icon(Icons.sports, size: 60, color: Colors.blue),
+            Image.asset(
+              'assets/icons/8meter.png',
+              width: 60,
+              height: 60,
+              color: Colors.blue,
+              colorBlendMode: BlendMode.srcIn,
+            ),
             const SizedBox(height: 16),
             Text(
               'Set Your Target',
@@ -792,8 +798,8 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
 
               if (shouldEnd == true && mounted) {
                 // Mark session as complete and save
-                _session!.isComplete = true;
-                await context.read<SessionManager>().updatePracticeSession(_session!);
+                _session.isComplete = true;
+                await context.read<SessionManager>().updatePracticeSession(_session);
                 widget.onExit();
               }
             },
@@ -1203,7 +1209,7 @@ class _KubbBlock extends StatelessWidget {
       imagePath = isBlueOnTop ? 'assets/images/sw_kubb1.png' : 'assets/images/sw_kubb2.png';
     }
 
-    return Container(
+    return SizedBox(
       width: 45,
       height: 70,
       child: Image.asset(
@@ -1250,7 +1256,7 @@ class _KingKubbBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: 50,
       height: 100,
       child: Image.asset(
@@ -1376,7 +1382,7 @@ class _BatonIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: 30,
       height: 60,
       child: Image.asset(

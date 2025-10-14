@@ -6,7 +6,9 @@ class PracticeSession {
   // Core Properties
   final String id;
   final DateTime date;
+  final SessionType sessionType;
   int target;
+  int targetScore;  // For Around the Pitch mode - configurable completion goal
   int totalKubbs;
   int totalBatons;
   DateTime startTime;
@@ -20,10 +22,13 @@ class PracticeSession {
   PracticeSession({
     String? id,
     DateTime? date,
+    this.sessionType = SessionType.standard,
     required this.target,
+    int? targetScore,
     DateTime? startTime,
   })  : id = id ?? const Uuid().v4(),
         date = date ?? DateTime.now(),
+        targetScore = targetScore ?? 20,  // Default target for Around the Pitch
         totalKubbs = 0,
         totalBatons = 0,
         startTime = startTime ?? DateTime.now(),
@@ -41,7 +46,9 @@ class PracticeSession {
   PracticeSession._({
     required this.id,
     required this.date,
+    required this.sessionType,
     required this.target,
+    required this.targetScore,
     required this.totalKubbs,
     required this.totalBatons,
     required this.startTime,
@@ -110,8 +117,12 @@ class PracticeSession {
 
   void addBatonResult(bool isHit) {
     // Don't add batons if the current round is complete
+    // Exception: For Around the Pitch mode, we keep adding to the same round
     final current = currentRound;
-    if (current == null || current.isRoundComplete) return;
+    if (current == null) return;
+    
+    // Only check isRoundComplete for standard sessions
+    if (sessionType == SessionType.standard && current.isRoundComplete) return;
 
     totalBatons++;
     if (isHit) {
@@ -122,12 +133,18 @@ class PracticeSession {
     // Update current round
     final index = rounds.indexWhere((r) => r.id == current.id);
     if (index != -1) {
-      // Determine throw type based on current round state
-      final throwType = (current.hits >= 5 && current.totalBatonThrows == 5)
-          ? ThrowType.king
-          : ThrowType.kubb;
+      // For Around the Pitch, throw type is determined by the view
+      // For Standard mode, determine throw type based on current round state
+      final throwType = sessionType == SessionType.aroundThePitch
+          ? ThrowType.kubb  // Will be overridden by the view
+          : (current.hits >= 5 && current.totalBatonThrows == 5)
+              ? ThrowType.king
+              : ThrowType.kubb;
 
-      rounds[index].addBatonThrow(isHit: isHit, throwType: throwType);
+      // Don't call addBatonThrow here for Around the Pitch since the view handles it
+      if (sessionType == SessionType.standard) {
+        rounds[index].addBatonThrow(isHit: isHit, throwType: throwType);
+      }
     }
   }
 
@@ -176,7 +193,9 @@ class PracticeSession {
       return PracticeSession._(
         id: id,
         date: date,
+        sessionType: sessionType,
         target: target,
+        targetScore: targetScore,
         totalKubbs: totalKubbs,
         totalBatons: totalBatons,
         startTime: startTime,
@@ -207,7 +226,9 @@ class PracticeSession {
     return {
       'id': id,
       'date': date.toIso8601String(),
+      'sessionType': sessionType.toString().split('.').last,
       'target': target,
+      'targetScore': targetScore,
       'totalKubbs': totalKubbs,
       'totalBatons': totalBatons,
       'startTime': startTime.toIso8601String(),
@@ -221,10 +242,39 @@ class PracticeSession {
   }
 
   factory PracticeSession.fromJson(Map<String, dynamic> json) {
+    final rounds = (json['rounds'] as List)
+        .map((r) => Round.fromJson(r as Map<String, dynamic>))
+        .toList();
+    
+    // Detect session type if not explicitly set
+    SessionType detectedType = SessionType.standard;
+    if (json['sessionType'] != null) {
+      detectedType = SessionType.values.firstWhere(
+        (e) => e.toString().split('.').last == json['sessionType'],
+        orElse: () => SessionType.standard,
+      );
+    } else {
+      // Auto-detect: Around the Pitch characteristics:
+      // - Has only 1 round (continuous session, not round-based)
+      // - Has more total batons (typically 11-30+ throws vs 6-12 per round in standard)
+      final totalBatons = json['totalBatons'] as int;
+      final totalKubbs = json['totalKubbs'] as int;
+      
+      if (rounds.length == 1 && totalBatons > 10) {
+        // Single round with many throws = Around the Pitch
+        detectedType = SessionType.aroundThePitch;
+      } else if (totalKubbs >= 10) {
+        // Or if they got 10+ kubbs (completed all baseline kubbs)
+        detectedType = SessionType.aroundThePitch;
+      }
+    }
+    
     return PracticeSession._(
       id: json['id'] as String,
       date: DateTime.parse(json['date'] as String),
+      sessionType: detectedType,
       target: json['target'] as int,
+      targetScore: (json['targetScore'] as int?) ?? 20,
       totalKubbs: json['totalKubbs'] as int,
       totalBatons: json['totalBatons'] as int,
       startTime: DateTime.parse(json['startTime'] as String),
@@ -233,9 +283,7 @@ class PracticeSession {
           : null,
       isComplete: json['isComplete'] as bool,
       isPaused: json['isPaused'] as bool,
-      rounds: (json['rounds'] as List)
-          .map((r) => Round.fromJson(r as Map<String, dynamic>))
-          .toList(),
+      rounds: rounds,
       createdAt: DateTime.parse(json['createdAt'] as String),
       modifiedAt: DateTime.parse(json['modifiedAt'] as String),
     );
@@ -301,11 +349,16 @@ class Round {
 
   // Round Management
 
-  void addBatonThrow({required bool isHit, required ThrowType throwType}) {
+  void addBatonThrow({
+    required bool isHit, 
+    required ThrowType throwType,
+    int? baselineNumber,
+  }) {
     batonThrows.add(BatonThrow(
       isHit: isHit,
       throwType: throwType,
       throwNumber: batonThrows.length + 1,
+      baselineNumber: baselineNumber,
     ));
   }
 
@@ -340,6 +393,7 @@ class BatonThrow {
   final bool isHit;
   final ThrowType throwType;
   final int throwNumber;
+  final int? baselineNumber;  // For Around the Pitch mode (1 or 2)
   final DateTime timestamp;
 
   BatonThrow({
@@ -347,6 +401,7 @@ class BatonThrow {
     required this.isHit,
     required this.throwType,
     required this.throwNumber,
+    this.baselineNumber,
   })  : id = id ?? const Uuid().v4(),
         timestamp = DateTime.now();
 
@@ -355,6 +410,7 @@ class BatonThrow {
     required this.isHit,
     required this.throwType,
     required this.throwNumber,
+    this.baselineNumber,
     required this.timestamp,
   });
 
@@ -366,6 +422,7 @@ class BatonThrow {
       'isHit': isHit,
       'throwType': throwType.toString().split('.').last,
       'throwNumber': throwNumber,
+      'baselineNumber': baselineNumber,
       'timestamp': timestamp.toIso8601String(),
     };
   }
@@ -378,6 +435,7 @@ class BatonThrow {
         (e) => e.toString().split('.').last == json['throwType'],
       ),
       throwNumber: json['throwNumber'] as int,
+      baselineNumber: json['baselineNumber'] as int?,
       timestamp: DateTime.parse(json['timestamp'] as String),
     );
   }
@@ -387,5 +445,11 @@ class BatonThrow {
 enum ThrowType {
   kubb,
   king,
+}
+
+/// Type of practice session
+enum SessionType {
+  standard,        // Standard 8M training (5 kubbs per round)
+  aroundThePitch,  // Around the Pitch (10 kubbs + king in single run)
 }
 

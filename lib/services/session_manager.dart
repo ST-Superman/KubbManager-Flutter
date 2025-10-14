@@ -47,6 +47,8 @@ class SessionManager extends ChangeNotifier {
   /// Start a new practice session
   Future<PracticeSession> startPracticeSession({
     required int target,
+    SessionType sessionType = SessionType.standard,
+    int? targetScore,
   }) async {
     // Complete any existing active session
     if (_activePracticeSession != null) {
@@ -54,7 +56,11 @@ class SessionManager extends ChangeNotifier {
     }
 
     // Create new session
-    final session = PracticeSession(target: target);
+    final session = PracticeSession(
+      target: target,
+      sessionType: sessionType,
+      targetScore: targetScore,
+    );
     await _db.createPracticeSession(session);
 
     // Set as active

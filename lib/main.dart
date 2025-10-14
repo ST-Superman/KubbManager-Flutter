@@ -15,7 +15,7 @@ class KubbManagerApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => SessionManager(),
       child: MaterialApp(
-        title: 'Kubb Manager',
+        title: 'Kubb Trainer',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(

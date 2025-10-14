@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'eight_meter_training_view.dart';
-import 'eight_meter_training_enhanced.dart';
+import 'around_the_pitch_training_view.dart';
+import 'inkast_blast_training_view.dart';
 import 'stats_view.dart';
+import '../models/inkast_blast_session.dart';
 
 /// Landing page showing training mode options
 class LandingPage extends StatelessWidget {
@@ -11,7 +13,7 @@ class LandingPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kubb Manager'),
+        title: const Text('Kubb Trainer'),
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
       ),
       body: SingleChildScrollView(
@@ -29,7 +31,7 @@ class LandingPage extends StatelessWidget {
               description:
                   'Practice throwing from 8 meters. Track your accuracy and build consistency.',
               imagePath: 'assets/icons/8meter.png',
-              color: Colors.blue,
+              color: Colors.blue.shade800,
               onTap: () {
                 _showModeSelection(context);
               },
@@ -39,25 +41,23 @@ class LandingPage extends StatelessWidget {
             _TrainingModeCard(
               title: 'Inkast Blast',
               description:
-                  'Practice throwing inkast kubbs with varying difficulty levels.',
+                  'Practice your inkasting, then clear your field kubbs (blast)',
               imagePath: 'assets/icons/inkastblast.png',
-              color: Colors.orange,
+              color: Colors.deepOrange.shade700,
               onTap: () {
-                // TODO: Navigate to Inkast Blast
-                _showComingSoon(context, 'Inkast Blast');
+                _showInkastBlastModeSelection(context);
               },
             ),
             const SizedBox(height: 16),
 
             _TrainingModeCard(
-              title: 'Full Game Sim',
+              title: 'Mixed Phase Training',
               description:
-                  'Simulate a full game with attacking, inkast, and field kubb phases.',
+                  'These sessions work on both 8 Meter and Inkast/Blast skills.',
               imagePath: 'assets/icons/kubbEquipment.png',
-              color: Colors.green,
+              color: Colors.green.shade700,
               onTap: () {
-                // TODO: Navigate to Full Game Sim
-                _showComingSoon(context, 'Full Game Sim');
+                _showMixedPhaseModeSelection(context);
               },
             ),
             const SizedBox(height: 32),
@@ -124,7 +124,13 @@ class LandingPage extends StatelessWidget {
             // Standard Mode
             Card(
               child: ListTile(
-                leading: const Icon(Icons.sports, color: Colors.blue, size: 40),
+                leading: Image.asset(
+                  'assets/icons/8meter.png',
+                  width: 40,
+                  height: 40,
+                  color: Colors.blue,
+                  colorBlendMode: BlendMode.srcIn,
+                ),
                 title: const Text('Standard Mode',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: const Text('Simple and straightforward'),
@@ -139,52 +145,228 @@ class LandingPage extends StatelessWidget {
                 },
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             
-            // Enhanced Mode
+            // Around the Pitch Mode
             Card(
-              elevation: 4,
-              color: Colors.blue.shade50,
               child: ListTile(
-                leading: Stack(
-                  children: [
-                    const Icon(Icons.auto_awesome,
-                        color: Colors.amber, size: 40),
-                    Positioned(
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Text(
-                          'NEW',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                leading: Image.asset(
+                  'assets/icons/aroundThePitch.png',
+                  width: 40,
+                  height: 40,
+                  color: Colors.blue,
+                  colorBlendMode: BlendMode.srcIn,
                 ),
-                title: const Text('Enhanced Mode',
+                title: const Text('Around the Pitch',
                     style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text(
-                    '🔥 Animations, streaks, live graphs!'),
+                subtitle: const Text('All 10 baseline kubbs + king'),
                 trailing: const Icon(Icons.arrow_forward_ios),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) =>
-                          const EightMeterTrainingEnhanced(),
+                      builder: (context) => const AroundThePitchTrainingView(),
                     ),
                   );
                 },
               ),
+            ),
+            const SizedBox(height: 16),
+            
+            // More modes coming soon message
+            const Text(
+              'More modes coming soon!',
+              style: TextStyle(
+                fontSize: 14,
+                fontStyle: FontStyle.italic,
+                color: Colors.grey,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showInkastBlastModeSelection(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.5,
+        maxChildSize: 0.75,
+        expand: false,
+        builder: (context, scrollController) => Container(
+          padding: const EdgeInsets.all(24),
+          child: SingleChildScrollView(
+            controller: scrollController,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Choose Your Mode',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                
+                // Early-Game Mode
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.looks_one, color: Colors.orange, size: 40),
+                    title: const Text('Early-Game',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('Inkast / blast practice with 1-3 kubbs'),
+                    trailing: const Icon(Icons.arrow_forward_ios),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const InkastBlastTrainingView(
+                            gamePhase: GamePhase.early,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // Mid-Game Mode
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.looks_two, color: Colors.orange, size: 40),
+                    title: const Text('Mid-Game',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('Inkast / blast practice with 4-7 kubbs'),
+                    trailing: const Icon(Icons.arrow_forward_ios),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const InkastBlastTrainingView(
+                            gamePhase: GamePhase.mid,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // End-Game Mode
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.looks_3, color: Colors.orange, size: 40),
+                    title: const Text('End-Game',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('Inkast / blast practice with 8-10 kubbs'),
+                    trailing: const Icon(Icons.arrow_forward_ios),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const InkastBlastTrainingView(
+                            gamePhase: GamePhase.end,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // Random Mode
+                Card(
+                  child: ListTile(
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Center(
+                        child: Text(
+                          '?',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    title: const Text('Random',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('Inkast / blast practice with 1-10 kubbs'),
+                    trailing: const Icon(Icons.arrow_forward_ios),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const InkastBlastTrainingView(
+                            gamePhase: GamePhase.all,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showMixedPhaseModeSelection(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Choose Your Mode',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            
+            // Full Game Sim Mode
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.sports_esports, color: Colors.green, size: 40),
+                title: const Text('Full Game Sim',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Simulate a complete Kubb game'),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showComingSoon(context, 'Full Game Sim');
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // More modes coming soon message
+            const Text(
+              'More modes coming soon!',
+              style: TextStyle(
+                fontSize: 14,
+                fontStyle: FontStyle.italic,
+                color: Colors.grey,
+              ),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
           ],
@@ -221,7 +403,7 @@ class _AppHeader extends StatelessWidget {
 
         // App Title
         Text(
-          'Kubb Manager',
+          'Kubb Trainer',
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
@@ -283,6 +465,8 @@ class _TrainingModeCard extends StatelessWidget {
                         width: 32,
                         height: 32,
                         fit: BoxFit.contain,
+                        color: color,
+                        colorBlendMode: BlendMode.srcIn,
                       )
                     : Icon(
                         icon!,
