@@ -171,6 +171,9 @@ class _EightMeterTrainingEnhancedState
       _session!.rounds[roundIndex].isComplete = true;
     }
 
+    // Check for perfect round (6 for 6!)
+    final isPerfectRound = round.totalBatonThrows == 6 && round.hits == 6;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -181,8 +184,45 @@ class _EightMeterTrainingEnhancedState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.check_circle, color: Colors.green, size: 64),
+              Icon(
+                isPerfectRound ? Icons.celebration : Icons.check_circle,
+                color: isPerfectRound ? Colors.amber : Colors.green,
+                size: 64,
+              ),
               const SizedBox(height: 16),
+              
+              // Perfect round celebration
+              if (isPerfectRound) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Colors.amber, Colors.orange],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.amber.withOpacity(0.5),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    '🏆 PERFECT 6 FOR 6! 🏆',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              
               Text(
                 'Round ${round.roundNumber} Complete!',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -197,7 +237,7 @@ class _EightMeterTrainingEnhancedState
                 '${(round.accuracy * 100).toStringAsFixed(1)}%',
                 Colors.blue,
               ),
-              if (round.hasBaselineClear) ...[
+              if (round.hasBaselineClear && !isPerfectRound) ...[
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -829,6 +869,8 @@ class _EnhancedKubbsVisual extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasKingThrow = hitCount >= 5;
+    
     return Column(
       children: [
         const Text(
@@ -836,21 +878,23 @@ class _EnhancedKubbsVisual extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         const SizedBox(height: 12),
+        
+        // 5 baseline kubbs
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(5, (index) {
             final isHit = index < hitCount;
-            final justHit = showExplosion && index == hitCount - 1;
+            final justHit = showExplosion && index == hitCount - 1 && hitCount <= 5;
 
             return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+              padding: const EdgeInsets.symmetric(horizontal: 6.0),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
                   // Explosion effect
                   if (justHit)
                     ScaleTransition(
-                      scale: Tween<double>(begin: 0.5, end: 2.0).animate(
+                      scale: Tween<double>(begin: 0.5, end: 2.5).animate(
                         CurvedAnimation(
                           parent: explosionAnimation,
                           curve: Curves.easeOut,
@@ -861,56 +905,264 @@ class _EnhancedKubbsVisual extends StatelessWidget {
                           explosionAnimation,
                         ),
                         child: Container(
-                          width: 60,
-                          height: 60,
+                          width: 80,
+                          height: 80,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.orange.withOpacity(0.6),
+                            color: Colors.orange.withOpacity(0.7),
                           ),
                         ),
                       ),
                     ),
                   
-                  // Kubb block
+                  // Kubb block - more realistic wooden kubb
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
-                    width: 50,
-                    height: 60,
+                    width: 44,
+                    height: 70,
                     decoration: BoxDecoration(
-                      color: isHit
-                          ? Colors.grey.withOpacity(0.3)
-                          : Colors.brown.shade700,
-                      borderRadius: BorderRadius.circular(8),
+                      // Gradient to look like wood
+                      gradient: isHit
+                          ? LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.grey.shade400,
+                                Colors.grey.shade600,
+                              ],
+                            )
+                          : LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.brown.shade400,
+                                Colors.brown.shade700,
+                              ],
+                            ),
+                      borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: isHit ? Colors.grey : Colors.brown.shade900,
+                        color: isHit
+                            ? Colors.grey.shade700
+                            : Colors.brown.shade900,
                         width: 2,
                       ),
                       boxShadow: isHit
                           ? []
                           : [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.3),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
+                                color: Colors.black.withOpacity(0.4),
+                                blurRadius: 6,
+                                offset: const Offset(2, 3),
                               ),
                             ],
                     ),
-                    child: Center(
-                      child: isHit
-                          ? const Icon(Icons.check_circle,
-                              color: Colors.green, size: 32)
-                          : Icon(Icons.square_rounded,
-                              color: Colors.brown.shade400, size: 24),
-                    ),
+                    child: isHit
+                        ? Stack(
+                            children: [
+                              // Knocked over effect - draw diagonal lines
+                              CustomPaint(
+                                painter: _KnockedKubbPainter(),
+                                size: const Size(44, 70),
+                              ),
+                              Center(
+                                child: Icon(
+                                  Icons.close,
+                                  color: Colors.grey.shade800,
+                                  size: 30,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 30,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: Colors.brown.shade900,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  width: 30,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: Colors.brown.shade900,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  width: 30,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: Colors.brown.shade900,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                   ),
                 ],
               ),
             );
           }),
         ),
+        
+        // King kubb appears after 5 hits
+        if (hasKingThrow) ...[
+          const SizedBox(height: 20),
+          const Text(
+            '⭐ KING KUBB ⭐',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: Colors.amber,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              // Explosion for king
+              if (showExplosion && hitCount == 6)
+                ScaleTransition(
+                  scale: Tween<double>(begin: 0.5, end: 3.0).animate(
+                    CurvedAnimation(
+                      parent: explosionAnimation,
+                      curve: Curves.easeOut,
+                    ),
+                  ),
+                  child: FadeTransition(
+                    opacity: Tween<double>(begin: 1.0, end: 0.0).animate(
+                      explosionAnimation,
+                    ),
+                    child: Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.amber.withOpacity(0.8),
+                      ),
+                    ),
+                  ),
+                ),
+              
+              // King kubb - taller and decorated
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                width: 52,
+                height: 90,
+                decoration: BoxDecoration(
+                  gradient: hitCount >= 6
+                      ? LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.grey.shade400,
+                            Colors.grey.shade600,
+                          ],
+                        )
+                      : LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.amber.shade300,
+                            Colors.amber.shade700,
+                          ],
+                        ),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: hitCount >= 6
+                        ? Colors.grey.shade700
+                        : Colors.amber.shade900,
+                    width: 3,
+                  ),
+                  boxShadow: hitCount >= 6
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: Colors.amber.withOpacity(0.5),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                ),
+                child: hitCount >= 6
+                    ? Center(
+                        child: Icon(
+                          Icons.close,
+                          color: Colors.grey.shade800,
+                          size: 40,
+                        ),
+                      )
+                    : Stack(
+                        children: [
+                          // Crown on top
+                          Positioned(
+                            top: 8,
+                            left: 0,
+                            right: 0,
+                            child: Icon(
+                              Icons.emoji_events,
+                              color: Colors.amber.shade900,
+                              size: 28,
+                            ),
+                          ),
+                          // Decorative lines
+                          Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(
+                                4,
+                                (i) => Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 3),
+                                  child: Container(
+                                    width: 36,
+                                    height: 3,
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.shade900,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }
+}
+
+/// Custom painter for knocked down kubb effect
+class _KnockedKubbPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.grey.shade700
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    // Draw diagonal lines to show it's knocked over
+    canvas.drawLine(
+      Offset(size.width * 0.3, size.height * 0.3),
+      Offset(size.width * 0.7, size.height * 0.7),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Enhanced batons visual
