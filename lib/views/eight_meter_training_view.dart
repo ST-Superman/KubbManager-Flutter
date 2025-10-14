@@ -310,6 +310,12 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
     final round = _session.currentRound;
     if (round == null) return;
 
+    // Mark the round as complete
+    final roundIndex = _session.rounds.indexWhere((r) => r.id == round.id);
+    if (roundIndex != -1) {
+      _session.rounds[roundIndex].isComplete = true;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
