@@ -153,8 +153,11 @@ class _EightMeterTrainingEnhancedState
     }
 
     // Record the throw
+    _session!.addBatonThrow(isHit);
+    
+    // Update the session in the database
     final sessionManager = context.read<SessionManager>();
-    await sessionManager.addBatonThrow(isHit);
+    await sessionManager.updatePracticeSession(_session!);
 
     // Update streak
     if (isHit) {
@@ -299,7 +302,7 @@ class _EightMeterTrainingEnhancedState
               ElevatedButton(
                 onPressed: () async {
                   _session!.startNextRound();
-                  await context.read<SessionManager>().saveActiveSessions();
+                  await context.read<SessionManager>().updatePracticeSession(_session!);
                   setState(() {
                     _currentStreak = 0;
                   });
@@ -315,7 +318,7 @@ class _EightMeterTrainingEnhancedState
   }
 
   void _showSessionCompleteDialog() {
-    final totalThrows = _session!.totalBatonThrows;
+    final totalThrows = _session!.totalBatons;
     final totalHits = _session!.totalKubbs;
     final overallAccuracy = totalThrows > 0 ? totalHits / totalThrows : 0.0;
 
@@ -352,7 +355,7 @@ class _EightMeterTrainingEnhancedState
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () async {
-                        await context.read<SessionManager>().completeActivePracticeSession();
+                        await context.read<SessionManager>().completePracticeSession();
                         Navigator.of(context).pop();
                         Navigator.of(context).pop();
                       },
@@ -363,7 +366,7 @@ class _EightMeterTrainingEnhancedState
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () async {
-                        await context.read<SessionManager>().completeActivePracticeSession();
+                        await context.read<SessionManager>().completePracticeSession();
                         Navigator.of(context).pop();
                         await _startNewSession(_session!.target);
                       },
