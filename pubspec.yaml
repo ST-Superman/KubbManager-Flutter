@@ -54,6 +54,8 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  
+  flutter_launcher_icons: ^0.13.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -103,3 +105,17 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Flutter Launcher Icons Configuration
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/kubb.png"
+  remove_alpha_ios: true  # Required for App Store submission
+  # Optionally specify different icons for Android and iOS:
+  # image_path_android: "assets/icons/app_icon_android.png"
+  # image_path_ios: "assets/icons/app_icon_ios.png"
+  
+  # For adaptive icons on Android (optional)
+  # adaptive_icon_background: "#FFFFFF"
+  # adaptive_icon_foreground: "assets/icons/kubbTrainer.png"
