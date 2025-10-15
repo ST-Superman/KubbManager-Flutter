@@ -246,11 +246,19 @@ class _SessionHistoryViewState extends State<SessionHistoryView> {
                   // Header Row
                   Row(
                     children: [
-                      Icon(
-                        session.icon,
-                        color: session.color,
-                        size: 24,
-                      ),
+                      session.imagePath != null
+                          ? Image.asset(
+                              session.imagePath!,
+                              width: 24,
+                              height: 24,
+                              color: session.color,
+                              colorBlendMode: BlendMode.srcIn,
+                            )
+                          : Icon(
+                              session.icon!,
+                              color: session.color,
+                              size: 24,
+                            ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -550,7 +558,15 @@ class _SessionHistoryViewState extends State<SessionHistoryView> {
                 // Header
                 Row(
                   children: [
-                    Icon(session.icon, color: session.color, size: 32),
+                    session.imagePath != null
+                        ? Image.asset(
+                            session.imagePath!,
+                            width: 32,
+                            height: 32,
+                            color: session.color,
+                            colorBlendMode: BlendMode.srcIn,
+                          )
+                        : Icon(session.icon!, color: session.color, size: 32),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -658,7 +674,8 @@ class SessionHistoryItem {
   final DateTime date;
   final Duration? duration;
   final Color color;
-  final IconData icon;
+  final IconData? icon;
+  final String? imagePath;
   final Map<String, dynamic> stats;
 
   SessionHistoryItem({
@@ -668,7 +685,8 @@ class SessionHistoryItem {
     required this.date,
     this.duration,
     required this.color,
-    required this.icon,
+    this.icon,
+    this.imagePath,
     required this.stats,
   });
 
@@ -693,7 +711,7 @@ class SessionHistoryItem {
       date: session.date,
       duration: duration,
       color: Colors.blue,
-      icon: Icons.sports_baseball,
+      imagePath: 'assets/icons/8meter.png',
       stats: {
         'sessionSubtype': subtitle,
         'accuracy': accuracy,
@@ -733,7 +751,7 @@ class SessionHistoryItem {
       date: session.date,
       duration: duration,
       color: Colors.deepOrange,
-      icon: Icons.whatshot,
+      imagePath: 'assets/icons/inkastblast.png',
       stats: {
         'gamePhase': session.gamePhase.displayName,
         'handicap': '${avgHandicap >= 0 ? '+' : ''}${avgHandicap.toStringAsFixed(2)}',
