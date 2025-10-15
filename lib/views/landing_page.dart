@@ -45,7 +45,7 @@ class LandingPage extends StatelessWidget {
               imagePath: 'assets/icons/inkastblast.png',
               color: Colors.deepOrange.shade700,
               onTap: () {
-                _showInkastBlastPhaseSelection(context);
+                _showInkastBlastModeSelection(context);
               },
             ),
             const SizedBox(height: 16),
@@ -168,6 +168,77 @@ class LandingPage extends StatelessWidget {
                       builder: (context) => const AroundThePitchTrainingView(),
                     ),
                   );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // More modes coming soon message
+            const Text(
+              'More modes coming soon!',
+              style: TextStyle(
+                fontSize: 14,
+                fontStyle: FontStyle.italic,
+                color: Colors.grey,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showInkastBlastModeSelection(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Choose Your Mode',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            
+            // Standard Inkast & Blast Mode
+            Card(
+              child: ListTile(
+                leading: Image.asset(
+                  'assets/icons/inkastblast.png',
+                  width: 40,
+                  height: 40,
+                  color: Colors.deepOrange,
+                  colorBlendMode: BlendMode.srcIn,
+                ),
+                title: const Text('Standard Inkast & Blast',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Practice inkasting and clearing kubbs by game phase'),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showInkastBlastPhaseSelection(context);
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            
+            // Doubles Mode
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.people, color: Colors.deepOrange, size: 40),
+                title: const Text('Doubles',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Points based skill game. Focused on drilling groups of 2 kubbs'),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showComingSoon(context, 'Doubles');
                 },
               ),
             ),
@@ -339,22 +410,6 @@ class LandingPage extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            
-            // Doubles Mode
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.people, color: Colors.deepOrange, size: 40),
-                title: const Text('Doubles',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('Points based skill game. Focused on drilling and clearing groups of 2 kubbs'),
-                trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showComingSoon(context, 'Doubles');
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
             
             // Full Game Sim Mode
             Card(
