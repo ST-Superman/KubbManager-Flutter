@@ -3,6 +3,7 @@ import 'eight_meter_training_view.dart';
 import 'around_the_pitch_training_view.dart';
 import 'inkast_blast_training_view.dart';
 import 'stats_view.dart';
+import 'session_history_view.dart';
 import '../models/inkast_blast_session.dart';
 
 /// Landing page showing training mode options
@@ -82,7 +83,11 @@ class LandingPage extends StatelessWidget {
             // History Button
             OutlinedButton.icon(
               onPressed: () {
-                _showComingSoon(context, 'Session History');
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const SessionHistoryView(),
+                  ),
+                );
               },
               icon: const Icon(Icons.history),
               label: const Text('Session History'),
