@@ -41,11 +41,11 @@ class LandingPage extends StatelessWidget {
             _TrainingModeCard(
               title: 'Inkast Blast',
               description:
-                  'Practice your inkasting, then clear your field kubbs (blast)',
+                  'Practice inkasting and clearing field kubbs in game scenarios',
               imagePath: 'assets/icons/inkastblast.png',
               color: Colors.deepOrange.shade700,
               onTap: () {
-                _showInkastBlastModeSelection(context);
+                _showInkastBlastPhaseSelection(context);
               },
             ),
             const SizedBox(height: 16),
@@ -159,7 +159,7 @@ class LandingPage extends StatelessWidget {
                 ),
                 title: const Text('Around the Pitch',
                     style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('All 10 baseline kubbs + king'),
+                subtitle: const Text('Points based skill game. Focused on 8 Meter efficiency'),
                 trailing: const Icon(Icons.arrow_forward_ios),
                 onTap: () {
                   Navigator.pop(context);
@@ -190,138 +190,136 @@ class LandingPage extends StatelessWidget {
     );
   }
 
-  void _showInkastBlastModeSelection(BuildContext context) {
-    showModalBottomSheet(
+  void _showInkastBlastPhaseSelection(BuildContext context) {
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.75,
-        minChildSize: 0.5,
-        maxChildSize: 0.75,
-        expand: false,
-        builder: (context, scrollController) => Container(
-          padding: const EdgeInsets.all(24),
-          child: SingleChildScrollView(
-            controller: scrollController,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          'Select Game Phase',
+          style: TextStyle(fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Which phase would you like to focus on?',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            
+            // Early-Game
+            _buildPhaseOption(
+              context,
+              'Early Game',
+              '1-3 kubbs',
+              Icons.looks_one,
+              Colors.green,
+              GamePhase.early,
+            ),
+            const SizedBox(height: 12),
+            
+            // Mid-Game
+            _buildPhaseOption(
+              context,
+              'Mid Game',
+              '4-7 kubbs',
+              Icons.looks_two,
+              Colors.blue,
+              GamePhase.mid,
+            ),
+            const SizedBox(height: 12),
+            
+            // End-Game
+            _buildPhaseOption(
+              context,
+              'End Game',
+              '8-10 kubbs',
+              Icons.looks_3,
+              Colors.deepOrange,
+              GamePhase.end,
+            ),
+            const SizedBox(height: 12),
+            
+            // Random
+            _buildPhaseOption(
+              context,
+              'Random',
+              '1-10 kubbs',
+              Icons.shuffle,
+              Colors.purple,
+              GamePhase.all,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhaseOption(
+    BuildContext context,
+    String title,
+    String subtitle,
+    IconData icon,
+    Color color,
+    GamePhase phase,
+  ) {
+    return ElevatedButton(
+      onPressed: () {
+        Navigator.pop(context);
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => InkastBlastTrainingView(
+              gamePhase: phase,
+            ),
+          ),
+        );
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: color,
+        elevation: 0,
+        side: BorderSide(color: Colors.grey.shade300),
+        padding: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 32, color: color),
+          const SizedBox(width: 16),
+          Expanded(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Choose Your Mode',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                
-                // Early-Game Mode
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.looks_one, color: Colors.orange, size: 40),
-                    title: const Text('Early-Game',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Inkast / blast practice with 1-3 kubbs'),
-                    trailing: const Icon(Icons.arrow_forward_ios),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const InkastBlastTrainingView(
-                            gamePhase: GamePhase.early,
-                          ),
-                        ),
-                      );
-                    },
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
                   ),
                 ),
-                const SizedBox(height: 12),
-                
-                // Mid-Game Mode
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.looks_two, color: Colors.orange, size: 40),
-                    title: const Text('Mid-Game',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Inkast / blast practice with 4-7 kubbs'),
-                    trailing: const Icon(Icons.arrow_forward_ios),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const InkastBlastTrainingView(
-                            gamePhase: GamePhase.mid,
-                          ),
-                        ),
-                      );
-                    },
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
                   ),
                 ),
-                const SizedBox(height: 12),
-                
-                // End-Game Mode
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.looks_3, color: Colors.orange, size: 40),
-                    title: const Text('End-Game',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Inkast / blast practice with 8-10 kubbs'),
-                    trailing: const Icon(Icons.arrow_forward_ios),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const InkastBlastTrainingView(
-                            gamePhase: GamePhase.end,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                
-                // Random Mode
-                Card(
-                  child: ListTile(
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.orange,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          '?',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                    title: const Text('Random',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Inkast / blast practice with 1-10 kubbs'),
-                    trailing: const Icon(Icons.arrow_forward_ios),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const InkastBlastTrainingView(
-                            gamePhase: GamePhase.all,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
               ],
             ),
           ),
-        ),
+          Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
+        ],
       ),
     );
   }
@@ -341,6 +339,22 @@ class LandingPage extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
+            
+            // Doubles Mode
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.people, color: Colors.deepOrange, size: 40),
+                title: const Text('Doubles',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Points based skill game. Focused on drilling and clearing groups of 2 kubbs'),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showComingSoon(context, 'Doubles');
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
             
             // Full Game Sim Mode
             Card(
