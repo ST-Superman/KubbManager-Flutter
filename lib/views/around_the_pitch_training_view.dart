@@ -20,6 +20,7 @@ class _AroundThePitchTrainingViewState extends State<AroundThePitchTrainingView>
   final List<bool> _kubbsDown = List.filled(10, false);
   bool _kingDown = false;
   int _currentBaseline = 1; // Which baseline we're currently throwing at
+  int _throwsInCurrentSet = 0; // Track throws in current 6-baton set
 
   @override
   void initState() {
@@ -68,18 +69,41 @@ class _AroundThePitchTrainingViewState extends State<AroundThePitchTrainingView>
     final round = _session!.currentRound;
     if (round == null) return;
     
-    // Restore kubb states from throws
+    // Restore kubb states from throws and calculate current set progress
+    int kubbThrows = 0;
     for (final throw_ in round.batonThrows) {
-      if (throw_.throwType == ThrowType.kubb && throw_.isHit) {
-        final baseline = throw_.baselineNumber ?? 1;
-        final index = _getNextKubbIndexForBaseline(baseline);
-        if (index != -1) {
-          _kubbsDown[index] = true;
+      if (throw_.throwType == ThrowType.kubb) {
+        kubbThrows++;
+        if (throw_.isHit) {
+          final baseline = throw_.baselineNumber ?? 1;
+          final index = _getNextKubbIndexForBaseline(baseline);
+          if (index != -1) {
+            _kubbsDown[index] = true;
+          }
         }
       } else if (throw_.throwType == ThrowType.king && throw_.isHit) {
         _kingDown = true;
       }
     }
+    
+    // Calculate throws in current set (modulo 6)
+    _throwsInCurrentSet = kubbThrows % 6;
+    
+    // Set current baseline based on which baselines have kubbs remaining
+    final baseline1Empty = _isBaselineEmpty(1);
+    final baseline2Empty = _isBaselineEmpty(2);
+    
+    if (!baseline1Empty && !baseline2Empty) {
+      // Both baselines have kubbs, start with baseline 1
+      _currentBaseline = 1;
+    } else if (!baseline1Empty) {
+      // Only baseline 1 has kubbs
+      _currentBaseline = 1;
+    } else if (!baseline2Empty) {
+      // Only baseline 2 has kubbs
+      _currentBaseline = 2;
+    }
+    // If both are empty, stay on current baseline (will throw at king)
   }
 
   int _getNextKubbIndexForBaseline(int baseline) {
@@ -94,175 +118,47 @@ class _AroundThePitchTrainingViewState extends State<AroundThePitchTrainingView>
     return -1;
   }
 
-  Future<void> _showTargetDialog() async {
-    int tempTarget = _targetScore;
+  bool _isBaselineEmpty(int baseline) {
+    final startIndex = baseline == 1 ? 0 : 5;
+    final endIndex = baseline == 1 ? 5 : 10;
     
-    // Get user's stats for Around the Pitch sessions
-    final sessionManager = context.read<SessionManager>();
-    final allSessions = await sessionManager.getAllPracticeSessions();
-    final aroundPitchSessions = allSessions
-        .where((s) => s.isComplete && s.sessionType == SessionType.aroundThePitch)
-        .toList();
-    
-    // Debug logging to verify filtering
-    debugPrint('🔍 Around the Pitch Stats:');
-    debugPrint('   Total sessions: ${allSessions.length}');
-    debugPrint('   Around the Pitch sessions: ${aroundPitchSessions.length}');
-    debugPrint('   Standard sessions: ${allSessions.where((s) => s.sessionType == SessionType.standard).length}');
-    
-    int? bestScore;
-    double? avgScore;
-    
-    if (aroundPitchSessions.isNotEmpty) {
-      bestScore = aroundPitchSessions
-          .map((s) => s.totalBatons)
-          .reduce((a, b) => a < b ? a : b);
-      avgScore = aroundPitchSessions.fold(0, (sum, s) => sum + s.totalBatons) / 
-          aroundPitchSessions.length;
+    for (int i = startIndex; i < endIndex; i++) {
+      if (!_kubbsDown[i]) {
+        return false; // Found a kubb still standing
+      }
     }
+    return true; // All kubbs on this baseline are down
+  }
+
+  void _switchToNextAvailableBaseline() {
+    final baseline1Empty = _isBaselineEmpty(1);
+    final baseline2Empty = _isBaselineEmpty(2);
     
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Set Your Target'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'What\'s your goal for total throws?',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            
-            // User's stats
-            if (aroundPitchSessions.isNotEmpty) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      'Your Stats',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        Column(
-                          children: [
-                            Text(
-                              '$bestScore',
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                            const Text(
-                              'Best',
-                              style: TextStyle(fontSize: 11),
-                            ),
-                          ],
-                        ),
-                        Container(
-                          width: 1,
-                          height: 30,
-                          color: Colors.green.shade300,
-                        ),
-                        Column(
-                          children: [
-                            Text(
-                              avgScore!.toStringAsFixed(1),
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                            const Text(
-                              'Average',
-                              style: TextStyle(fontSize: 11),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            
-            // Reference info
-            Text(
-              aroundPitchSessions.isEmpty
-                  ? 'Phil Dickinson aims for under 20.\nA perfect game is 11 throws.'
-                  : 'Perfect game is 11 throws.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 20),
-            
-            // Target selector
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  onPressed: () {
-                    if (tempTarget > 11) {
-                      tempTarget--;
-                      (context as Element).markNeedsBuild();
-                    }
-                  },
-                  icon: const Icon(Icons.remove_circle),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '$tempTarget',
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: () {
-                    if (tempTarget < 50) {
-                      tempTarget++;
-                      (context as Element).markNeedsBuild();
-                    }
-                  },
-                  icon: const Icon(Icons.add_circle),
-                ),
-              ],
-            ),
-          ],
+    if (baseline1Empty && baseline2Empty) {
+      // Both baselines are empty, stay on current baseline (will throw at king)
+      return;
+    } else if (baseline1Empty) {
+      // Baseline 1 is empty, switch to baseline 2
+      _currentBaseline = 2;
+    } else if (baseline2Empty) {
+      // Baseline 2 is empty, switch to baseline 1
+      _currentBaseline = 1;
+    } else {
+      // Both baselines have kubbs, switch to the other one
+      _currentBaseline = _currentBaseline == 1 ? 2 : 1;
+    }
+  }
+
+  Future<void> _showTargetDialog() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _AroundThePitchTargetSelectionScreen(
+          initialTarget: _targetScore,
+          onTargetSelected: (target) {
+            _targetScore = target;
+            Navigator.of(context).pop();
+          },
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _targetScore = tempTarget;
-              Navigator.of(context).pop();
-            },
-            child: const Text('Start'),
-          ),
-        ],
       ),
     );
   }
@@ -558,23 +454,35 @@ class _AroundThePitchTrainingViewState extends State<AroundThePitchTrainingView>
     
     return Column(
       children: [
-        // Baseline selector
+        // Current baseline indicator and set progress
         if (!allKubbsDown) ...[
-          const Text(
-            'Select Baseline:',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _buildBaselineButton(1),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildBaselineButton(2),
-              ),
-            ],
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  'Throwing at Baseline $_currentBaseline',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Throws in current set: $_throwsInCurrentSet/6',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
         ],
@@ -642,38 +550,6 @@ class _AroundThePitchTrainingViewState extends State<AroundThePitchTrainingView>
     );
   }
 
-  Widget _buildBaselineButton(int baselineNumber) {
-    final isSelected = _currentBaseline == baselineNumber;
-    final baseline1Complete = _kubbsDown.sublist(0, 5).every((k) => k);
-    final baseline2Complete = _kubbsDown.sublist(5, 10).every((k) => k);
-    final isComplete = baselineNumber == 1 ? baseline1Complete : baseline2Complete;
-    
-    return OutlinedButton(
-      onPressed: isComplete ? null : () {
-        setState(() {
-          _currentBaseline = baselineNumber;
-        });
-      },
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        side: BorderSide(
-          color: isSelected ? Colors.blue : Colors.grey,
-          width: isSelected ? 2 : 1,
-        ),
-        backgroundColor: isSelected 
-            ? Colors.blue.withValues(alpha: 0.1) 
-            : Colors.transparent,
-      ),
-      child: Text(
-        'Baseline $baselineNumber${isComplete ? ' ✓' : ''}',
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          color: isComplete ? Colors.grey : (isSelected ? Colors.blue : Colors.black),
-        ),
-      ),
-    );
-  }
 
   Future<void> _recordThrow(bool isHit) async {
     if (_session == null) return;
@@ -703,6 +579,23 @@ class _AroundThePitchTrainingViewState extends State<AroundThePitchTrainingView>
         if (nextIndex != -1) {
           _kubbsDown[nextIndex] = true;
         }
+      }
+    }
+    
+    // Increment throws in current set
+    _throwsInCurrentSet++;
+    
+    // Check if we need to switch baselines
+    if (throwType == ThrowType.kubb) {
+      // Check if current baseline is now empty
+      if (_isBaselineEmpty(_currentBaseline)) {
+        _switchToNextAvailableBaseline();
+        _throwsInCurrentSet = 0; // Reset throw counter for new baseline
+      }
+      // Check if we've thrown 6 batons in current set
+      else if (_throwsInCurrentSet >= 6) {
+        _switchToNextAvailableBaseline();
+        _throwsInCurrentSet = 0; // Reset throw counter for new baseline
       }
     }
     
@@ -890,6 +783,318 @@ class _AroundThePitchTrainingViewState extends State<AroundThePitchTrainingView>
       final sessionManager = context.read<SessionManager>();
       sessionManager.updatePracticeSession(_session!);
     }
+  }
+}
+
+/// Around the Pitch target selection screen
+class _AroundThePitchTargetSelectionScreen extends StatefulWidget {
+  final int initialTarget;
+  final Function(int) onTargetSelected;
+
+  const _AroundThePitchTargetSelectionScreen({
+    required this.initialTarget,
+    required this.onTargetSelected,
+  });
+
+  @override
+  State<_AroundThePitchTargetSelectionScreen> createState() =>
+      _AroundThePitchTargetSelectionScreenState();
+}
+
+class _AroundThePitchTargetSelectionScreenState extends State<_AroundThePitchTargetSelectionScreen> {
+  int _selectedTarget = 20;
+  int? _bestScore;
+  double? _avgScore;
+
+  final List<int> _presetTargets = [11, 15, 20, 25];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedTarget = widget.initialTarget;
+    _loadUserStats();
+  }
+
+  Future<void> _loadUserStats() async {
+    final sessionManager = context.read<SessionManager>();
+    final allSessions = await sessionManager.getAllPracticeSessions();
+    final aroundPitchSessions = allSessions
+        .where((s) => s.isComplete && s.sessionType == SessionType.aroundThePitch)
+        .toList();
+    
+    if (aroundPitchSessions.isNotEmpty) {
+      setState(() {
+        _bestScore = aroundPitchSessions
+            .map((s) => s.totalBatons)
+            .reduce((a, b) => a < b ? a : b);
+        _avgScore = aroundPitchSessions.fold(0, (sum, s) => sum + s.totalBatons) / 
+            aroundPitchSessions.length;
+      });
+    }
+  }
+
+  void _decreaseTarget() {
+    setState(() {
+      if (_selectedTarget > 11) {
+        _selectedTarget--;
+      }
+    });
+  }
+
+  void _increaseTarget() {
+    setState(() {
+      _selectedTarget++;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Around the Pitch'),
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Image.asset(
+              'assets/icons/aroundThePitch.png',
+              width: 50,
+              height: 50,
+              color: Colors.blue,
+              colorBlendMode: BlendMode.srcIn,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Set Your Target',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'How many throws to clear all 10 baseline kubbs + king?',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+
+            // User's stats (if available)
+            if (_bestScore != null && _avgScore != null) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'Your Stats',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Column(
+                          children: [
+                            Text(
+                              '$_bestScore',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                            const Text(
+                              'Best',
+                              style: TextStyle(fontSize: 10),
+                            ),
+                          ],
+                        ),
+                        Container(
+                          width: 1,
+                          height: 30,
+                          color: Colors.green.shade300,
+                        ),
+                        Column(
+                          children: [
+                            Text(
+                              _avgScore!.toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                            const Text(
+                              'Average',
+                              style: TextStyle(fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // Current target with +/- buttons
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Minus button
+                    IconButton(
+                      onPressed: _selectedTarget > 11 ? _decreaseTarget : null,
+                      icon: const Icon(Icons.remove_circle_outline),
+                      iconSize: 36,
+                      color: Colors.blue,
+                    ),
+                    const SizedBox(width: 12),
+                    
+                    // Target number
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$_selectedTarget',
+                        style: Theme.of(context)
+                            .textTheme
+                            .displayMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    
+                    // Plus button
+                    IconButton(
+                      onPressed: _increaseTarget,
+                      icon: const Icon(Icons.add_circle_outline),
+                      iconSize: 36,
+                      color: Colors.blue,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Preset target buttons
+            Text(
+              'Quick Select',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: _presetTargets.map((target) {
+                final isPerfect = target == 11;
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3.0),
+                    child: Stack(
+                      children: [
+                        OutlinedButton(
+                          onPressed: () => setState(() => _selectedTarget = target),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 2),
+                            side: BorderSide(
+                              color: _selectedTarget == target
+                                  ? Colors.blue
+                                  : Colors.grey,
+                              width: 2,
+                            ),
+                            backgroundColor: _selectedTarget == target
+                                ? Colors.blue.withOpacity(0.1)
+                                : null,
+                          ),
+                          child: Text(
+                            '$target',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _selectedTarget == target
+                                  ? Colors.blue
+                                  : Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                        if (isPerfect)
+                          Positioned(
+                            top: -2,
+                            right: -2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                'Perfect',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            
+            const SizedBox(height: 20),
+
+            // Start button
+            ElevatedButton(
+              onPressed: () => widget.onTargetSelected(_selectedTarget),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.all(16),
+              ),
+              child: const Text(
+                'Start Practice',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

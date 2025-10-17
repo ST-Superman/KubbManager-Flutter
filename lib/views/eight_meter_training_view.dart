@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/practice_session.dart';
 import '../services/session_manager.dart';
+import '../services/simple_watch_service.dart';
 
 /// 8 Meter Practice Training View
 class EightMeterTrainingView extends StatefulWidget {
@@ -12,17 +14,27 @@ class EightMeterTrainingView extends StatefulWidget {
       _EightMeterTrainingViewState();
 }
 
-class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
+class _EightMeterTrainingViewState extends State<EightMeterTrainingView> with WidgetsBindingObserver {
   PracticeSession? _session;
   bool _isLoading = false;
   int _currentStreak = 0;
   int _bestStreak = 0;
   List<double> _accuracyHistory = [];
 
+  // Watch connectivity - temporarily disabled
+  // final SimpleWatchService _watchService = SimpleWatchService();
+  // bool _isWatchModeEnabled = false;
+  // bool _isWatchConnected = false;
+  // StreamSubscription<WatchThrowEvent>? _throwEventSubscription;
+  // StreamSubscription<bool>? _connectionStateSubscription;
+  // StreamSubscription<String>? _errorSubscription;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkForActiveSession();
+    // _initializeWatchConnectivity(); // temporarily disabled
   }
 
   Future<void> _checkForActiveSession() async {
@@ -35,6 +47,7 @@ class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
       setState(() {
         _session = activeSession;
         _updateAccuracyHistory();
+        _calculateCurrentStreak(); // Calculate streak from existing throws
         _isLoading = false;
       });
     } else {
@@ -45,7 +58,10 @@ class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
 
   Future<void> _startNewSession(int target) async {
     final sessionManager = context.read<SessionManager>();
-    final newSession = await sessionManager.startPracticeSession(target: target);
+    final newSession = await sessionManager.startPracticeSession(
+      target: target,
+      sessionType: SessionType.standard, // Explicitly set as 8-Meter Training
+    );
 
     setState(() {
       _session = newSession;
@@ -70,6 +86,47 @@ class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
     }
   }
 
+  void _calculateCurrentStreak() {
+    if (_session == null) {
+      _currentStreak = 0;
+      return;
+    }
+
+    // Calculate streak by looking at the last throws across all rounds
+    _currentStreak = 0;
+    _bestStreak = 0;
+    
+    // Get all throws in chronological order
+    List<bool> allThrows = [];
+    for (var round in _session!.rounds) {
+      for (var throw_ in round.batonThrows) {
+        allThrows.add(throw_.isHit);
+      }
+    }
+    
+    // Calculate current streak (from the end backwards)
+    for (int i = allThrows.length - 1; i >= 0; i--) {
+      if (allThrows[i]) {
+        _currentStreak++;
+      } else {
+        break; // Streak broken
+      }
+    }
+    
+    // Calculate best streak
+    int tempStreak = 0;
+    for (bool isHit in allThrows) {
+      if (isHit) {
+        tempStreak++;
+        if (tempStreak > _bestStreak) {
+          _bestStreak = tempStreak;
+        }
+      } else {
+        tempStreak = 0;
+      }
+    }
+  }
+
   Future<void> _onThrow(bool isHit) async {
     if (_session == null) return;
 
@@ -80,20 +137,18 @@ class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
     final sessionManager = context.read<SessionManager>();
     await sessionManager.updatePracticeSession(_session!);
 
-    // Update streak
-    if (isHit) {
-      _currentStreak++;
-      if (_currentStreak > _bestStreak) {
-        _bestStreak = _currentStreak;
-      }
-    } else {
-      _currentStreak = 0;
-    }
+    // Update streak - recalculate from all throws
+    _calculateCurrentStreak();
 
     // Update accuracy history
     _updateAccuracyHistory();
 
     setState(() {});
+
+    // Sync to watch if watch mode is enabled - temporarily disabled
+    // if (_isWatchModeEnabled) {
+    //   await _syncSessionToWatch();
+    // }
 
     // Check if session is complete FIRST (target reached)
     if (_session!.totalBatons >= _session!.target && !_session!.isComplete) {
@@ -214,8 +269,9 @@ class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
                 onPressed: () async {
                   _session!.startNextRound();
                   await context.read<SessionManager>().updatePracticeSession(_session!);
+                  // Don't reset streak - it should continue across rounds
                   setState(() {
-                    _currentStreak = 0;
+                    // _currentStreak = 0; // Removed - streak continues across rounds
                   });
                   Navigator.of(context).pop();
                 },
@@ -344,6 +400,147 @@ class _EightMeterTrainingViewState extends State<EightMeterTrainingView> {
         setState(() => _session = null);
         Navigator.of(context).pop();
       },
+      // Watch mode temporarily disabled
+      // isWatchModeEnabled: _isWatchModeEnabled,
+      // isWatchConnected: _isWatchConnected,
+      // onEnableWatchMode: _enableWatchMode,
+      // onDisableWatchMode: _disableWatchMode,
+    );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // _cleanupWatchConnectivity(); // temporarily disabled
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Watch mode temporarily disabled
+    // if (state == AppLifecycleState.paused && _isWatchModeEnabled) {
+    //   // App is going to background, ensure watch session stays active
+    //   _syncSessionToWatch();
+    // }
+  }
+
+  // ============================================================================
+  // Watch Connectivity Methods
+  // ============================================================================
+
+  // Watch connectivity methods - temporarily disabled
+  /*
+  Future<void> _initializeWatchConnectivity() async {
+    final initialized = await _watchService.initialize();
+    
+    if (!initialized) {
+      debugPrint('⚠️ Watch connectivity not available');
+      return;
+    }
+
+    // Listen for connection state changes
+    _connectionStateSubscription = _watchService.connectionState.listen((isConnected) {
+      setState(() {
+        _isWatchConnected = isConnected;
+      });
+      
+      if (!isConnected && _isWatchModeEnabled) {
+        _showSnackBar('Apple Watch disconnected', isError: true);
+      }
+    });
+
+    // Listen for throw events from watch
+    _throwEventSubscription = _watchService.throwEvents.listen((event) {
+      if (event.sessionId == _session?.id) {
+        _handleWatchThrow(event);
+      }
+    });
+
+    // Listen for errors
+    _errorSubscription = _watchService.errors.listen((error) {
+      _showSnackBar('Watch error: $error', isError: true);
+    });
+
+    // Check initial connection state
+    final isConnected = await _watchService.checkConnectionState();
+    setState(() {
+      _isWatchConnected = isConnected;
+    });
+  }
+  */
+
+  /*
+  void _cleanupWatchConnectivity() {
+    _throwEventSubscription?.cancel();
+    _connectionStateSubscription?.cancel();
+    _errorSubscription?.cancel();
+    
+    if (_isWatchModeEnabled) {
+      _watchService.endWatchSession();
+    }
+    
+    _watchService.dispose();
+  }
+
+  Future<void> _enableWatchMode() async {
+    if (_session == null) {
+      _showSnackBar('No active session', isError: true);
+      return;
+    }
+
+    if (!_isWatchConnected) {
+      _showSnackBar('Apple Watch not connected', isError: true);
+      return;
+    }
+
+    final success = await _watchService.startWatchSession(_session!);
+    
+    if (success) {
+      setState(() {
+        _isWatchModeEnabled = true;
+      });
+      
+      _showSnackBar('Watch mode enabled! Use your Apple Watch to record throws.');
+    } else {
+      _showSnackBar('Failed to enable watch mode', isError: true);
+    }
+  }
+
+  Future<void> _disableWatchMode() async {
+    final success = await _watchService.endWatchSession();
+    
+    if (success) {
+      setState(() {
+        _isWatchModeEnabled = false;
+      });
+      
+      _showSnackBar('Watch mode disabled');
+    }
+  }
+
+  Future<void> _handleWatchThrow(WatchThrowEvent event) async {
+    debugPrint('🔵 Received throw from watch: ${event.isHit ? "HIT" : "MISS"}');
+    
+    await _onThrow(event.isHit);
+    await _watchService.sendHapticFeedback(event.isHit ? 'success' : 'failure');
+    await _syncSessionToWatch();
+  }
+
+  Future<void> _syncSessionToWatch() async {
+    if (!_isWatchModeEnabled || _session == null) return;
+
+    await _watchService.updateWatchSession(_session!);
+  }
+  */
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : null,
+        duration: const Duration(seconds: 3),
+      ),
     );
   }
 }
@@ -555,6 +752,11 @@ class _PracticeSessionScreen extends StatefulWidget {
   final List<double> accuracyHistory;
   final Function(bool) onThrow;
   final VoidCallback onExit;
+  // Watch mode temporarily disabled
+  // final bool isWatchModeEnabled;
+  // final bool isWatchConnected;
+  // final VoidCallback onEnableWatchMode;
+  // final VoidCallback onDisableWatchMode;
 
   const _PracticeSessionScreen({
     required this.session,
@@ -563,6 +765,11 @@ class _PracticeSessionScreen extends StatefulWidget {
     required this.accuracyHistory,
     required this.onThrow,
     required this.onExit,
+    // Watch mode temporarily disabled
+    // required this.isWatchModeEnabled,
+    // required this.isWatchConnected,
+    // required this.onEnableWatchMode,
+    // required this.onDisableWatchMode,
   });
 
   @override
@@ -578,157 +785,7 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
     _session = widget.session;
   }
 
-  Future<void> _recordThrow(bool isHit) async {
-    setState(() {
-      _session.addBatonResult(isHit);
-    });
 
-    // Update in database
-    final sessionManager = context.read<SessionManager>();
-    await sessionManager.updatePracticeSession(_session);
-
-    // Check if round is complete
-    if (_session.currentRound?.isRoundComplete ?? false) {
-      _showRoundCompleteDialog();
-    }
-
-    // Check if session is complete
-    if (_session.isTargetReached && !_session.isComplete) {
-      _showSessionCompleteDialog();
-    }
-  }
-
-  void _showRoundCompleteDialog() {
-    final round = _session.currentRound;
-    if (round == null) return;
-
-    // Mark the round as complete
-    final roundIndex = _session.rounds.indexWhere((r) => r.id == round.id);
-    if (roundIndex != -1) {
-      _session.rounds[roundIndex].isComplete = true;
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Round Complete!'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Round ${round.roundNumber}',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 16),
-            _StatRow(
-              label: 'Hits',
-              value: '${round.hits}',
-              color: Colors.green,
-            ),
-            _StatRow(
-              label: 'Misses',
-              value: '${round.misses}',
-              color: Colors.red,
-            ),
-            _StatRow(
-              label: 'Accuracy',
-              value: '${(round.accuracy * 100).toStringAsFixed(1)}%',
-              color: Colors.blue,
-            ),
-            if (round.hasBaselineClear)
-              const Padding(
-                padding: EdgeInsets.only(top: 16.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.star, color: Colors.amber, size: 32),
-                    SizedBox(width: 8),
-                    Text(
-                      'Baseline Clear!',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              // Start next round BEFORE closing dialog
-              _session.startNextRound();
-              await context.read<SessionManager>().updatePracticeSession(_session);
-              
-              if (mounted) {
-                Navigator.of(context).pop();
-                setState(() {
-                  // Force rebuild with new round
-                });
-              }
-            },
-            child: const Text('Next Round'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSessionCompleteDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Session Complete!'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Congratulations! 🎉',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            _StatRow(
-              label: 'Total Batons',
-              value: '${_session.totalBatons}',
-            ),
-            _StatRow(
-              label: 'Total Hits',
-              value: '${_session.totalKubbs}',
-            ),
-            _StatRow(
-              label: 'Accuracy',
-              value: '${(_session.accuracy * 100).toStringAsFixed(1)}%',
-            ),
-            _StatRow(
-              label: 'Rounds',
-              value: '${_session.completedRounds.length}',
-            ),
-            _StatRow(
-              label: 'Baseline Clears',
-              value: '${_session.totalBaselineClears}',
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await context.read<SessionManager>().completePracticeSession();
-              if (mounted) {
-                Navigator.of(context).pop();
-                widget.onExit();
-              }
-            },
-            child: const Text('Finish'),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -739,6 +796,28 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
         title: const Text('8 Meter Practice'),
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
         actions: [
+          // Watch Mode Button - temporarily disabled
+          /*
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: IconButton(
+              icon: Icon(
+                widget.isWatchModeEnabled
+                    ? Icons.watch
+                    : Icons.watch_outlined,
+                color: widget.isWatchModeEnabled
+                    ? Colors.green
+                    : (widget.isWatchConnected ? Colors.white : Colors.grey),
+              ),
+              tooltip: widget.isWatchModeEnabled
+                  ? 'Disable Watch Mode'
+                  : (widget.isWatchConnected ? 'Enable Watch Mode' : 'Apple Watch Not Connected'),
+              onPressed: widget.isWatchConnected
+                  ? (widget.isWatchModeEnabled ? widget.onDisableWatchMode : widget.onEnableWatchMode)
+                  : null,
+            ),
+          ),
+          */
           // Pause Session
           IconButton(
             icon: const Icon(Icons.pause),
@@ -808,6 +887,42 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
       ),
       body: Column(
         children: [
+          // Watch mode indicator banner - temporarily disabled
+          /*
+          if (widget.isWatchModeEnabled)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade700, Colors.blue.shade500],
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.watch, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Watch Mode Active',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: widget.isWatchConnected ? Colors.greenAccent : Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          */
           // Progress bar
           LinearProgressIndicator(
             value: _session.progressPercentage,
@@ -994,34 +1109,6 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Live accuracy chart at bottom
-                  if (widget.accuracyHistory.isNotEmpty) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Live Accuracy',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            height: 100,
-                            child: _AccuracyChart(accuracyHistory: widget.accuracyHistory),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -1032,38 +1119,6 @@ class _PracticeSessionScreenState extends State<_PracticeSessionScreen> {
   }
 }
 
-/// Stat row widget
-class _StatRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? color;
-
-  const _StatRow({
-    required this.label,
-    required this.value,
-    this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.bodyLarge),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 /// Compact stat widget for top bar
 class _CompactStat extends StatelessWidget {
@@ -1436,116 +1491,3 @@ class _BatonIcon extends StatelessWidget {
 
 
 
-/// Live accuracy chart with 50% target line
-class _AccuracyChart extends StatelessWidget {
-  final List<double> accuracyHistory;
-
-  const _AccuracyChart({required this.accuracyHistory});
-
-  @override
-  Widget build(BuildContext context) {
-    if (accuracyHistory.isEmpty) {
-      return const Center(
-        child: Text('Start throwing to see your accuracy!'),
-      );
-    }
-
-    return CustomPaint(
-      size: const Size(double.infinity, 200),
-      painter: _AccuracyChartPainter(accuracyHistory: accuracyHistory),
-    );
-  }
-}
-
-/// Custom painter for accuracy chart with 50% target line
-class _AccuracyChartPainter extends CustomPainter {
-  final List<double> accuracyHistory;
-
-  _AccuracyChartPainter({required this.accuracyHistory});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (accuracyHistory.isEmpty) return;
-
-    final paint = Paint()
-      ..color = Colors.blue
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
-
-    final fillPaint = Paint()
-      ..color = Colors.blue.withOpacity(0.2)
-      ..style = PaintingStyle.fill;
-
-    final targetPaint = Paint()
-      ..color = Colors.orange
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
-    final path = Path();
-    final fillPath = Path();
-
-    final stepX = size.width / (accuracyHistory.length - 1);
-    final maxY = size.height - 40;
-
-    // Start the path
-    path.moveTo(0, maxY - (accuracyHistory[0] * maxY));
-    fillPath.moveTo(0, maxY);
-    fillPath.lineTo(0, maxY - (accuracyHistory[0] * maxY));
-
-    for (int i = 1; i < accuracyHistory.length; i++) {
-      final x = i * stepX;
-      final y = maxY - (accuracyHistory[i] * maxY);
-      
-      path.lineTo(x, y);
-      fillPath.lineTo(x, y);
-    }
-
-    // Close the fill path
-    fillPath.lineTo(size.width, maxY);
-    fillPath.close();
-
-    // Draw 50% target line
-    final targetY = maxY - (0.5 * maxY);
-    canvas.drawLine(
-      Offset(0, targetY),
-      Offset(size.width, targetY),
-      targetPaint,
-    );
-
-    // Draw target line label
-    final textPainter = TextPainter(
-      text: const TextSpan(
-        text: '50% Target',
-        style: TextStyle(
-          color: Colors.orange,
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
-    textPainter.paint(canvas, Offset(8, targetY - 16));
-
-    // Draw filled area first
-    canvas.drawPath(fillPath, fillPaint);
-    
-    // Draw line
-    canvas.drawPath(path, paint);
-
-    // Draw data points
-    final pointPaint = Paint()
-      ..color = Colors.blue
-      ..style = PaintingStyle.fill;
-
-    for (int i = 0; i < accuracyHistory.length; i++) {
-      final x = i * stepX;
-      final y = maxY - (accuracyHistory[i] * maxY);
-      
-      canvas.drawCircle(Offset(x, y), 4, pointPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}

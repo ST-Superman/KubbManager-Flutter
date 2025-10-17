@@ -701,7 +701,7 @@ class SessionHistoryItem {
     if (session.sessionType == SessionType.aroundThePitch) {
       subtitle = 'Around the Pitch';
     } else {
-      subtitle = 'Standard Mode';
+      subtitle = '8-Meter Training';
     }
 
     return SessionHistoryItem(

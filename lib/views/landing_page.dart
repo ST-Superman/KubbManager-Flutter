@@ -144,7 +144,7 @@ class LandingPage extends StatelessWidget {
                   Navigator.pop(context);
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => const EightMeterTrainingView(),
+                          builder: (context) => const EightMeterTrainingView(),
                     ),
                   );
                 },

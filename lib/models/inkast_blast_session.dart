@@ -356,8 +356,9 @@ class InkastBlastRound {
       misses++;
     }
 
-    // Check if round is complete (all field kubbs cleared)
-    if (kubbsClearedFirstThrow >= totalKubbsInBounds) {
+    // Check if round is complete (all kubbs cleared, including penalty kubbs)
+    final totalKubbsToClear = totalKubbsInBounds + penaltyKubbs;
+    if (kubbsClearedFirstThrow >= totalKubbsToClear) {
       isComplete = true;
     }
   }

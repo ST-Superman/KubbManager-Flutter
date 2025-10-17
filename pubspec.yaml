@@ -50,6 +50,9 @@ dependencies:
   
   # Charts for Statistics
   fl_chart: ^0.68.0
+  
+        # Apple Watch Connectivity
+        # flutter_watch_os_connectivity: ^1.0.0
 
 dev_dependencies:
   flutter_test:

@@ -26,7 +26,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // Increment version to add sessionType and targetScore columns
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -39,7 +39,9 @@ class DatabaseService {
       CREATE TABLE practice_sessions (
         id TEXT PRIMARY KEY,
         date TEXT NOT NULL,
+        sessionType TEXT NOT NULL DEFAULT 'standard',
         target INTEGER NOT NULL,
+        targetScore INTEGER NOT NULL DEFAULT 20,
         totalKubbs INTEGER NOT NULL,
         totalBatons INTEGER NOT NULL,
         startTime TEXT NOT NULL,
@@ -119,8 +121,9 @@ class DatabaseService {
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
     // Handle schema migrations in future versions
     if (oldVersion < 2) {
-      // Example migration for version 2
-      // await db.execute('ALTER TABLE practice_sessions ADD COLUMN new_field TEXT');
+      // Add sessionType and targetScore columns to practice_sessions table
+      await db.execute('ALTER TABLE practice_sessions ADD COLUMN sessionType TEXT DEFAULT "standard"');
+      await db.execute('ALTER TABLE practice_sessions ADD COLUMN targetScore INTEGER DEFAULT 20');
     }
   }
 
@@ -444,7 +447,9 @@ class DatabaseService {
     return {
       'id': session.id,
       'date': session.date.toIso8601String(),
+      'sessionType': session.sessionType.name,
       'target': session.target,
+      'targetScore': session.targetScore,
       'totalKubbs': session.totalKubbs,
       'totalBatons': session.totalBatons,
       'startTime': session.startTime.toIso8601String(),
@@ -462,7 +467,9 @@ class DatabaseService {
     return PracticeSession.fromJson({
       'id': map['id'],
       'date': map['date'],
+      'sessionType': map['sessionType'] ?? 'standard', // Default to standard if missing
       'target': map['target'],
+      'targetScore': map['targetScore'],
       'totalKubbs': map['totalKubbs'],
       'totalBatons': map['totalBatons'],
       'startTime': map['startTime'],

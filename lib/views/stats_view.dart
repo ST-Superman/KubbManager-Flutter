@@ -19,6 +19,10 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
   List<PracticeSession> _allSessions = [];
   List<InkastBlastSession> _allInkastBlastSessions = [];
   bool _isLoading = true;
+  
+  // Phase filter dropdowns
+  GamePhase _selectedInkastPhase = GamePhase.all;
+  GamePhase _selectedBlastPhase = GamePhase.all;
 
   @override
   void initState() {
@@ -302,7 +306,9 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
   Widget _buildOverviewTab() {
     final stats = _calculateOverallStats();
     final recentForm = _calculateRecentForm();
+    final inkastBlastRecentForm = _calculateInkastBlastRecentForm();
     final personalRecords = _calculatePersonalRecords();
+    final inkastBlastPersonalRecords = _calculateInkastBlastPersonalRecords();
     final weeklySummary = _calculateWeeklySummary();
     
     return SingleChildScrollView(
@@ -318,8 +324,12 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 16),
           
-          // Recent Form Comparison
+          // Recent Form Comparison - 8 Meters
           _buildRecentFormCard(recentForm),
+          const SizedBox(height: 16),
+          
+          // Recent Form Comparison - Inkast/Blast
+          _buildInkastBlastRecentFormCard(inkastBlastRecentForm),
           const SizedBox(height: 16),
           
           // Key metrics cards
@@ -327,7 +337,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
           const SizedBox(height: 24),
           
           // Personal Records
-          _buildPersonalRecordsSection(personalRecords),
+          _buildPersonalRecordsSection(personalRecords, inkastBlastPersonalRecords, stats),
           const SizedBox(height: 24),
           
           // Weekly Summary
@@ -488,6 +498,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     final totalRounds = sessions.fold(0, (sum, s) => sum + s.completedRounds.length);
     final baselineClears = sessions.fold(0, (sum, s) => sum + s.totalBaselineClears);
     final advancedStats = _calculateAdvancedTrainingStatsForSessions(sessions);
+    final longestStreak = _calculateLongestStreakForSessions(sessions);
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -522,12 +533,12 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
         ),
         const SizedBox(height: 16),
         
-        // Standard Mode Specific Metrics
+        // All Standard Mode Metrics in One Grid
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 1.5,
+          childAspectRatio: 1.3,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
           children: [
@@ -545,12 +556,43 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
               Colors.amber,
               'Rounds where all 5 baseline kubbs were knocked down. This doesn\'t require a perfect 6/6 - you just need to clear all 5 kubbs in the round.',
             ),
+            _buildMetricCard(
+              'First Throw',
+              '${(advancedStats.firstThrowAccuracy * 100).toStringAsFixed(1)}%',
+              Icons.looks_one,
+              Colors.indigo,
+              'Your accuracy on the first baton throw of each round. A lower percentage indicates "cold start" issues.',
+            ),
+            _buildMetricCard(
+              'Consistency',
+              '${(advancedStats.consistencyScore * 100).toStringAsFixed(1)}%',
+              Icons.show_chart,
+              Colors.teal,
+              'Standard deviation of your session accuracies. Higher score means more consistent performance (less variation).',
+            ),
+            _buildMetricCard(
+              'Clutch Performance',
+              '${(advancedStats.clutchAccuracy * 100).toStringAsFixed(1)}%',
+              Icons.stars,
+              Colors.deepPurple,
+              'Your accuracy when 3-4 kubbs are already down. Shows your performance under pressure.',
+            ),
+            _buildMetricCard(
+              'Avg Kubbs/Round',
+              advancedStats.avgKubbsPerRound.toStringAsFixed(1),
+              Icons.bar_chart,
+              Colors.cyan,
+              'Average number of baseline kubbs knocked down per round. Higher is better - maximum is 5.0.',
+            ),
+            _buildMetricCard(
+              'Longest Streak',
+              '$longestStreak',
+              Icons.local_fire_department,
+              Colors.red,
+              'Longest consecutive baseline clears in a single session.',
+            ),
           ],
         ),
-        const SizedBox(height: 16),
-        
-        // Advanced Metrics (Standard Mode only)
-        _buildAdvancedMetricsGrid(advancedStats),
         const SizedBox(height: 16),
         
         // Round Progression (Standard Mode only)
@@ -578,6 +620,8 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
             (sessions.length < 5 ? sessions.length : 5);
     final metTarget = sessions.where((s) => s.totalBatons <= s.targetScore).length;
     final targetSuccessRate = totalSessions > 0 ? metTarget / totalSessions : 0.0;
+    final longestStreak = _calculateAroundPitchLongestStreak(sessions);
+    final clutchPerformance = _calculateAroundPitchClutchPerformance(sessions);
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -647,23 +691,77 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
               Colors.green,
               '$metTarget of $totalSessions times you met or beat your target.',
             ),
+            _buildMetricCard(
+              'Longest Streak',
+              '$longestStreak',
+              Icons.local_fire_department,
+              Colors.red,
+              'Longest consecutive baton hits within a single session.',
+            ),
+            _buildMetricCard(
+              'Clutch Performance',
+              '${(clutchPerformance * 100).toStringAsFixed(1)}%',
+              Icons.stars,
+              Colors.deepPurple,
+              'Your accuracy when you have yellow or red warnings (tight situations).',
+            ),
           ],
         ),
       ],
     );
   }
 
+  // ==================== HELPER WIDGETS ====================
+
+  Widget _buildPhaseDropdown({
+    required GamePhase selectedPhase,
+    required Function(GamePhase) onChanged,
+    required String label,
+  }) {
+    return Row(
+      children: [
+        Text(
+          '$label: ',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(width: 8),
+        DropdownButton<GamePhase>(
+          value: selectedPhase,
+          onChanged: (GamePhase? newPhase) {
+            if (newPhase != null) {
+              onChanged(newPhase);
+            }
+          },
+          items: GamePhase.values.map<DropdownMenuItem<GamePhase>>((GamePhase phase) {
+            return DropdownMenuItem<GamePhase>(
+              value: phase,
+              child: Text(phase.displayName),
+            );
+          }).toList(),
+          underline: Container(
+            height: 1,
+            color: Theme.of(context).primaryColor,
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildProgressTab() {
     final chartData = _prepareChartData();
+    final inkastChartData = _prepareInkastChartData();
+    final blastChartData = _prepareBlastChartData();
     
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 8 Meter Progress Section
           Text(
-            'Progress Tracking',
+            '8 Meter Progress',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.bold,
             ),
@@ -680,6 +778,73 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
           
           // Performance zones
           _buildPerformanceZones(),
+          const SizedBox(height: 32),
+          
+          // Inkasting Progress Section
+          Text(
+            'Inkasting Progress',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildPhaseDropdown(
+            selectedPhase: _selectedInkastPhase,
+            onChanged: (GamePhase phase) {
+              setState(() {
+                _selectedInkastPhase = phase;
+              });
+            },
+            label: 'Filter by Phase',
+          ),
+          const SizedBox(height: 16),
+          
+          if (inkastChartData[GamePhase.early]!.isNotEmpty || 
+              inkastChartData[GamePhase.mid]!.isNotEmpty || 
+              inkastChartData[GamePhase.end]!.isNotEmpty) ...[
+            _buildInkastOutOfBoundsChart(inkastChartData),
+            const SizedBox(height: 24),
+            _buildInkastPenaltyRatioChart(inkastChartData),
+            const SizedBox(height: 24),
+            _buildInkastNeighborRatioChart(inkastChartData),
+            const SizedBox(height: 24),
+            _buildInkastFirstThrowSuccessChart(inkastChartData),
+          ] else
+            _buildNoDataMessage('No Inkasting sessions yet. Start training to see progress!'),
+          
+          const SizedBox(height: 32),
+          
+          // Blasting Progress Section
+          Text(
+            'Blasting Progress',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildPhaseDropdown(
+            selectedPhase: _selectedBlastPhase,
+            onChanged: (GamePhase phase) {
+              setState(() {
+                _selectedBlastPhase = phase;
+              });
+            },
+            label: 'Filter by Phase',
+          ),
+          const SizedBox(height: 16),
+          
+          if (blastChartData[GamePhase.early]!.isNotEmpty || 
+              blastChartData[GamePhase.mid]!.isNotEmpty || 
+              blastChartData[GamePhase.end]!.isNotEmpty) ...[
+            _buildBlastAccuracyTrendChart(blastChartData),
+            const SizedBox(height: 24),
+            _buildBlastKubbsPerBatonChart(blastChartData),
+            const SizedBox(height: 24),
+            _buildBlastMissRateChart(blastChartData),
+            const SizedBox(height: 24),
+            _buildBlastHandicapChart(blastChartData),
+          ] else
+            _buildNoDataMessage('No Blasting sessions yet. Start training to see progress!'),
         ],
       ),
     );
@@ -726,6 +891,10 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
 
           // Lifetime vs Recent Handicap Comparison
           _buildHandicapComparisonCard(stats),
+          const SizedBox(height: 24),
+
+          // Comprehensive Performance Metrics
+          _buildComprehensivePerformanceSection(completedSessions),
           const SizedBox(height: 24),
 
           // Per-Phase Statistics
@@ -1046,6 +1215,230 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildComprehensivePerformanceSection(List<InkastBlastSession> sessions) {
+    final recentSessions = sessions.take(5).toList();
+    
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Performance Metrics',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // Inkasting Metrics
+            Text(
+              'Inkasting Performance',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricComparison(
+                    'Out of Bounds %',
+                    _calculateLifetimeOutOfBounds(sessions),
+                    _calculateRecentOutOfBounds(recentSessions),
+                    '%',
+                    reverse: true, // Lower is better
+                    decimalPlaces: 1, // One decimal place
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildMetricComparison(
+                    'First Throw Clear',
+                    _calculateLifetimeFirstThrowSuccess(sessions),
+                    _calculateRecentFirstThrowSuccess(recentSessions),
+                    '%',
+                    decimalPlaces: 1, // One decimal place
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricComparison(
+                    'Inkasts per Penalty',
+                    _calculateLifetimeInkastsPerPenalty(sessions),
+                    _calculateRecentInkastsPerPenalty(recentSessions),
+                    '',
+                    // Higher is better (default behavior)
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildMetricComparison(
+                    'Inkasts per Neighbor',
+                    _calculateLifetimeInkastsPerNeighbor(sessions),
+                    _calculateRecentInkastsPerNeighbor(recentSessions),
+                    '',
+                    reverse: true, // Lower is better
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Blasting Metrics
+            Text(
+              'Blasting Performance',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricComparison(
+                    'Accuracy',
+                    _calculateLifetimeBlastAccuracy(sessions),
+                    _calculateRecentBlastAccuracy(recentSessions),
+                    '%',
+                    decimalPlaces: 1, // One decimal place
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildMetricComparison(
+                    'Kubbs per Baton',
+                    _calculateLifetimeKubbsPerBaton(sessions),
+                    _calculateRecentKubbsPerBaton(recentSessions),
+                    '',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricComparison(
+                    'Miss Rate',
+                    _calculateLifetimeMissRate(sessions),
+                    _calculateRecentMissRate(recentSessions),
+                    '%',
+                    reverse: true, // Lower is better
+                    decimalPlaces: 1, // One decimal place
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildMetricComparison(
+                    'Handicap',
+                    _calculateLifetimeHandicap(sessions),
+                    _calculateRecentHandicap(recentSessions),
+                    '',
+                    reverse: true, // Lower is better
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetricComparison(String title, double lifetime, double recent, String unit, {bool reverse = false, int? decimalPlaces}) {
+    final difference = recent - lifetime;
+    final isImproving = reverse ? difference <= 0 : difference >= 0;
+    final absDifference = difference.abs();
+    
+    // Determine decimal places for formatting
+    int lifetimeDecimals = decimalPlaces ?? (unit == '%' ? 1 : 2);
+    int recentDecimals = decimalPlaces ?? (unit == '%' ? 1 : 2);
+    int differenceDecimals = decimalPlaces ?? (unit == '%' ? 1 : 2);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Recent',
+                    style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                  ),
+                  Text(
+                    '${recent.toStringAsFixed(recentDecimals)}$unit',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue, // Changed from Colors.deepOrange to Colors.blue
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              isImproving ? Icons.trending_up : Icons.trending_down,
+              size: 16,
+              color: isImproving ? Colors.green : Colors.red,
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Lifetime',
+                    style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                  ),
+                  Text(
+                    '${lifetime.toStringAsFixed(lifetimeDecimals)}$unit',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[700], // Keep lifetime as black
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '${absDifference.toStringAsFixed(differenceDecimals)}$unit ${isImproving ? 'better' : 'worse'}',
+          style: TextStyle(
+            fontSize: 10,
+            color: isImproving ? Colors.green : Colors.red, // Keep trends as red/green
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPhaseStatsSection(String title, PhaseStatistics stats, Color color) {
     return Card(
       elevation: 2,
@@ -1269,46 +1662,101 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
   }
 
   Widget _buildMetricsGrid(OverallStats stats) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 1.5,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      children: [
-        _buildMetricCard(
-          'Total Sessions',
-          '${stats.totalSessions}',
-          Icons.calendar_today,
-          Colors.blue,
-          'Practice sessions completed',
-        ),
-        _buildMetricCard(
-          'Total Batons',
-          '${stats.totalBatons}',
-          Icons.sports,
-          Colors.green,
-          'Batons thrown across all sessions',
-        ),
-        _buildMetricCard(
-          'Overall Accuracy',
-          '${(stats.overallAccuracy * 100).toStringAsFixed(1)}%',
-          Icons.gps_fixed,
-          Colors.orange,
-          'Average hit rate across all sessions',
-        ),
-        _buildMetricCard(
-          'Best Streak',
-          '${stats.bestStreak}',
-          Icons.local_fire_department,
-          Colors.red,
-          'Longest consecutive hit streak',
-        ),
-      ],
+    final eightMeterSessions = _allSessions.where((s) => s.isComplete && (s.sessionType == SessionType.standard || s.sessionType == SessionType.aroundThePitch)).length;
+    final inkastBlastSessions = _allInkastBlastSessions.where((s) => s.isComplete).length;
+    
+    return _buildSessionCountCard(
+      'Total Sessions',
+      eightMeterSessions,
+      inkastBlastSessions,
+      Icons.calendar_today,
     );
   }
 
+  Widget _buildSessionCountCard(String title, int eightMeterSessions, int inkastBlastSessions, IconData icon) {
+    return Card(
+      elevation: 4,
+      child: InkWell(
+        onTap: () {
+          _showStatDescription(context, title, 'Breakdown of completed training sessions');
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: Colors.blue, size: 24),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$eightMeterSessions',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          '8 Meter',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$inkastBlastSessions',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Inkast/Blast',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildMetricCard(String title, String value, IconData icon, Color color, String description) {
     return Card(
@@ -1424,7 +1872,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Recent Form',
+                        'Recent Form - 8 Meters',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -1500,54 +1948,215 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildPersonalRecordsSection(PersonalRecords records) {
+  Widget _buildInkastBlastRecentFormCard(RecentFormStats stats) {
+    // For handicap, lower is better (like golf), so improvement means recentAvg < overallAvg
+    final isImproving = stats.recentAvg < stats.overallAvg;
+    final difference = (stats.recentAvg - stats.overallAvg).abs();
+    
     return Card(
       elevation: 4,
-      child: Padding(
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: isImproving 
+              ? [Colors.green.withValues(alpha: 0.1), Colors.green.withValues(alpha: 0.05)]
+              : [Colors.orange.withValues(alpha: 0.1), Colors.orange.withValues(alpha: 0.05)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.emoji_events, color: Colors.amber, size: 28),
+                Icon(
+                  isImproving ? Icons.trending_up : Icons.trending_flat,
+                  color: isImproving ? Colors.green : Colors.orange,
+                  size: 28,
+                ),
                 const SizedBox(width: 12),
-                Text(
-                  'Personal Records',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Recent Form - Inkast/Blast',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'Last ${stats.sessionCount} sessions',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            _buildRecordRow(
-              'Best Session',
-              '${(records.bestSessionAccuracy * 100).toStringAsFixed(1)}%',
-              Icons.star,
-              Colors.amber,
-            ),
-            _buildRecordRow(
-              'Longest Streak',
-              '${records.longestStreak} hits',
-              Icons.local_fire_department,
-              Colors.orange,
-            ),
-            _buildRecordRow(
-              'Perfect Rounds',
-              '${records.perfectRounds}',
-              Icons.stars,
-              Colors.purple,
-            ),
-            _buildRecordRow(
-              'Most Baseline Clears',
-              '${records.mostBaselineClears} in session',
-              Icons.military_tech,
-              Colors.green,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildFormMetric(
+                  'Recent',
+                  '${stats.recentAvg >= 0 ? '+' : ''}${stats.recentAvg.toStringAsFixed(1)}',
+                  Colors.blue,
+                ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: Colors.grey[300],
+                ),
+                _buildFormMetric(
+                  'Overall',
+                  '${stats.overallAvg >= 0 ? '+' : ''}${stats.overallAvg.toStringAsFixed(1)}',
+                  Colors.grey,
+                ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: Colors.grey[300],
+                ),
+                _buildFormMetric(
+                  'Difference',
+                  '${isImproving ? '+' : '-'}${difference.toStringAsFixed(1)}',
+                  isImproving ? Colors.green : Colors.orange,
+                ),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPersonalRecordsSection(PersonalRecords records, InkastBlastPersonalRecords inkastBlastRecords, OverallStats stats) {
+    return Column(
+      children: [
+        // 8 Meter Personal Records
+        Card(
+          elevation: 4,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.emoji_events, color: Colors.blue, size: 28),
+                    const SizedBox(width: 12),
+                    Text(
+                      '8 Meter Records',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _buildRecordRow(
+                  'Best Session Accuracy',
+                  '${(records.bestSessionAccuracy * 100).toStringAsFixed(1)}%',
+                  Icons.star,
+                  Colors.amber,
+                ),
+                _buildRecordRow(
+                  'Longest Streak',
+                  '${records.longestStreak} hits',
+                  Icons.local_fire_department,
+                  Colors.orange,
+                ),
+                _buildRecordRow(
+                  'Lifetime Perfect Rounds',
+                  '${records.perfectRounds}',
+                  Icons.stars,
+                  Colors.purple,
+                ),
+                _buildRecordRow(
+                  'Most Baseline Clears',
+                  '${records.mostBaselineClears} in session',
+                  Icons.military_tech,
+                  Colors.green,
+                ),
+                _buildRecordRow(
+                  'Best Around The Pitch Score',
+                  '${records.bestAroundThePitchScore}',
+                  Icons.flag,
+                  Colors.teal,
+                ),
+                _buildRecordRow(
+                  'Total 8 Meter Batons',
+                  '${stats.totalBatons}',
+                  Icons.sports,
+                  Colors.green,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Inkast/Blast Personal Records
+        Card(
+          elevation: 4,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.emoji_events, color: Colors.orange, size: 28),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Inkast/Blast Records',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _buildRecordRow(
+                  'Total Neighbors',
+                  '${inkastBlastRecords.totalNeighbors}',
+                  Icons.people,
+                  Colors.brown,
+                ),
+                _buildRecordRow(
+                  'Total A-Lines',
+                  '${inkastBlastRecords.totalALines}',
+                  Icons.warning,
+                  Colors.red,
+                ),
+                _buildRecordRow(
+                  'Overall Handicap - Early',
+                  '${inkastBlastRecords.overallHandicapEarly >= 0 ? '+' : ''}${inkastBlastRecords.overallHandicapEarly.toStringAsFixed(1)}',
+                  Icons.play_arrow,
+                  Colors.green,
+                ),
+                _buildRecordRow(
+                  'Overall Handicap - Mid',
+                  '${inkastBlastRecords.overallHandicapMid >= 0 ? '+' : ''}${inkastBlastRecords.overallHandicapMid.toStringAsFixed(1)}',
+                  Icons.pause,
+                  Colors.blue,
+                ),
+                _buildRecordRow(
+                  'Overall Handicap - End',
+                  '${inkastBlastRecords.overallHandicapEnd >= 0 ? '+' : ''}${inkastBlastRecords.overallHandicapEnd.toStringAsFixed(1)}',
+                  Icons.stop,
+                  Colors.purple,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1677,59 +2286,6 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildAdvancedMetricsGrid(AdvancedTrainingStats stats) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Advanced Metrics',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: Colors.grey[700],
-          ),
-        ),
-        const SizedBox(height: 12),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 1.3,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          children: [
-            _buildMetricCard(
-              'First Throw',
-              '${(stats.firstThrowAccuracy * 100).toStringAsFixed(1)}%',
-              Icons.looks_one,
-              Colors.indigo,
-              'Your accuracy on the first baton throw of each round. A lower percentage indicates "cold start" issues.',
-            ),
-            _buildMetricCard(
-              'Consistency',
-              '${(stats.consistencyScore * 100).toStringAsFixed(1)}%',
-              Icons.show_chart,
-              Colors.teal,
-              'Standard deviation of your session accuracies. Higher score means more consistent performance (less variation).',
-            ),
-            _buildMetricCard(
-              'Clutch Performance',
-              '${(stats.clutchAccuracy * 100).toStringAsFixed(1)}%',
-              Icons.stars,
-              Colors.deepPurple,
-              'Your accuracy when 3-4 kubbs are already down. Shows your performance under pressure.',
-            ),
-            _buildMetricCard(
-              'Avg Kubbs/Round',
-              stats.avgKubbsPerRound.toStringAsFixed(1),
-              Icons.bar_chart,
-              Colors.cyan,
-              'Average number of baseline kubbs knocked down per round. Higher is better - maximum is 5.0.',
-            ),
-          ],
-        ),
-      ],
-    );
-  }
 
 
   Widget _buildRecentSessions() {
@@ -2314,6 +2870,33 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     );
   }
 
+  RecentFormStats _calculateInkastBlastRecentForm() {
+    final completedSessions = _allInkastBlastSessions.where((s) => s.isComplete).toList();
+    
+    if (completedSessions.isEmpty) {
+      return RecentFormStats(
+        recentAvg: 0.0,
+        overallAvg: 0.0,
+        sessionCount: 0,
+      );
+    }
+    
+    final sessionCount = completedSessions.length >= 5 ? 5 : completedSessions.length;
+    final recentSessions = completedSessions.take(sessionCount).toList();
+    
+    final recentHandicap = recentSessions.isEmpty 
+        ? 0.0 
+        : _calculateHandicap(recentSessions);
+    
+    final overallHandicap = _calculateHandicap(completedSessions);
+    
+    return RecentFormStats(
+      recentAvg: recentHandicap,
+      overallAvg: overallHandicap,
+      sessionCount: sessionCount,
+    );
+  }
+
   PersonalRecords _calculatePersonalRecords() {
     final completedSessions = _allSessions.where((s) => s.isComplete).toList();
     
@@ -2323,6 +2906,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
         longestStreak: 0,
         perfectRounds: 0,
         mostBaselineClears: 0,
+        bestAroundThePitchScore: 0,
       );
     }
     
@@ -2363,11 +2947,65 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
       }
     }
     
+    // Calculate best Around the Pitch score
+    int bestAroundThePitchScore = 0;
+    for (final session in completedSessions) {
+      if (session.sessionType == SessionType.aroundThePitch) {
+        // Around the Pitch score is typically total kubbs hit
+        final sessionScore = session.totalKubbs;
+        if (sessionScore > bestAroundThePitchScore) {
+          bestAroundThePitchScore = sessionScore;
+        }
+      }
+    }
+
     return PersonalRecords(
       bestSessionAccuracy: bestSessionAccuracy,
       longestStreak: longestStreak,
       perfectRounds: perfectRounds,
       mostBaselineClears: mostBaselineClears,
+      bestAroundThePitchScore: bestAroundThePitchScore,
+    );
+  }
+
+  InkastBlastPersonalRecords _calculateInkastBlastPersonalRecords() {
+    final completedSessions = _allInkastBlastSessions.where((s) => s.isComplete).toList();
+    
+    if (completedSessions.isEmpty) {
+      return InkastBlastPersonalRecords(
+        totalNeighbors: 0,
+        totalALines: 0,
+        overallHandicapEarly: 0.0,
+        overallHandicapMid: 0.0,
+        overallHandicapEnd: 0.0,
+      );
+    }
+
+    int totalNeighbors = 0;
+    int totalALines = 0;
+    
+    // Calculate totals
+    for (final session in completedSessions) {
+      totalNeighbors += session.totalNeighborKubbs;
+      // A-Lines are rounds where inkasted kubbs are not cleared in 6 or fewer batons
+      totalALines += session.rounds.where((round) => round.batonsUsed > 6).length;
+    }
+
+    // Calculate handicap by phase
+    final earlyPhaseSessions = completedSessions.where((s) => s.gamePhase == GamePhase.early).toList();
+    final midPhaseSessions = completedSessions.where((s) => s.gamePhase == GamePhase.mid).toList();
+    final endPhaseSessions = completedSessions.where((s) => s.gamePhase == GamePhase.end).toList();
+
+    final overallHandicapEarly = earlyPhaseSessions.isNotEmpty ? _calculateHandicap(earlyPhaseSessions) : 0.0;
+    final overallHandicapMid = midPhaseSessions.isNotEmpty ? _calculateHandicap(midPhaseSessions) : 0.0;
+    final overallHandicapEnd = endPhaseSessions.isNotEmpty ? _calculateHandicap(endPhaseSessions) : 0.0;
+
+    return InkastBlastPersonalRecords(
+      totalNeighbors: totalNeighbors,
+      totalALines: totalALines,
+      overallHandicapEarly: overallHandicapEarly,
+      overallHandicapMid: overallHandicapMid,
+      overallHandicapEnd: overallHandicapEnd,
     );
   }
 
@@ -2475,6 +3113,1091 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     );
   }
 
+  int _calculateLongestStreakForSessions(List<PracticeSession> sessions) {
+    int longestStreak = 0;
+    
+    for (final session in sessions) {
+      int currentStreak = 0;
+      int maxStreakInSession = 0;
+      
+      for (final round in session.completedRounds) {
+        if (round.hasBaselineClear) {
+          currentStreak++;
+          maxStreakInSession = currentStreak > maxStreakInSession ? currentStreak : maxStreakInSession;
+        } else {
+          currentStreak = 0;
+        }
+      }
+      
+      longestStreak = maxStreakInSession > longestStreak ? maxStreakInSession : longestStreak;
+    }
+    
+    return longestStreak;
+  }
+
+  int _calculateAroundPitchLongestStreak(List<PracticeSession> sessions) {
+    if (sessions.isEmpty) return 0;
+    
+    int longestStreak = 0;
+    
+    for (final session in sessions) {
+      // Only process completed sessions
+      if (!session.isComplete || session.completedRounds.isEmpty) continue;
+      
+      final round = session.completedRounds.first; // Around the pitch has only one round
+      int currentStreak = 0;
+      int maxStreakInSession = 0;
+      
+      for (final throw_ in round.batonThrows) {
+        if (throw_.isHit) {
+          currentStreak++;
+          maxStreakInSession = currentStreak > maxStreakInSession ? currentStreak : maxStreakInSession;
+        } else {
+          currentStreak = 0;
+        }
+      }
+      
+      longestStreak = maxStreakInSession > longestStreak ? maxStreakInSession : longestStreak;
+    }
+    
+    return longestStreak;
+  }
+
+  double _calculateAroundPitchClutchPerformance(List<PracticeSession> sessions) {
+    if (sessions.isEmpty) return 0.0;
+    
+    int clutchThrows = 0;
+    int clutchHits = 0;
+    
+    for (final session in sessions) {
+      // Only process completed sessions
+      if (!session.isComplete || session.completedRounds.isEmpty) continue;
+      
+      final round = session.completedRounds.first; // Around the pitch has only one round
+      final targetScore = session.targetScore;
+      
+      for (int i = 0; i < round.batonThrows.length; i++) {
+        final throw_ = round.batonThrows[i];
+        final throwsUsed = i + 1;
+        final kubbsDown = round.hits;
+        final kubbsRemaining = 10 - kubbsDown;
+        final kingRemaining = 1; // Assuming king is still up at this point
+        final piecesRemaining = kubbsRemaining + kingRemaining;
+        final throwsRemaining = targetScore - throwsUsed;
+        
+        // Calculate buffer: extra throws beyond what's needed (if perfect)
+        final buffer = throwsRemaining - piecesRemaining;
+        
+        // Check if this throw was made during a warning state (yellow or red)
+        // Yellow: buffer 2-4, Red: buffer <= 1
+        if (buffer >= 1 && buffer <= 4) {
+          clutchThrows++;
+          if (throw_.isHit) {
+            clutchHits++;
+          }
+        }
+      }
+    }
+    
+    return clutchThrows > 0 ? clutchHits / clutchThrows : 0.0;
+  }
+
+  // ==================== CHART DATA PREPARATION ====================
+
+  Map<GamePhase, List<InkastChartDataPoint>> _prepareInkastChartData() {
+    final inkastSessions = _allInkastBlastSessions
+        .where((s) => s.isComplete)
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    
+    final Map<GamePhase, List<InkastChartDataPoint>> phaseData = {
+      GamePhase.early: [],
+      GamePhase.mid: [],
+      GamePhase.end: [],
+    };
+    
+    for (final session in inkastSessions) {
+      // Group rounds by their individual phases based on kubbs to inkast
+      final Map<GamePhase, List<InkastBlastRound>> roundsByPhase = {
+        GamePhase.early: [],
+        GamePhase.mid: [],
+        GamePhase.end: [],
+      };
+      
+      for (final round in session.rounds) {
+        final roundPhase = _getRoundPhase(round.inkastKubbs);
+        if (roundPhase != GamePhase.all) {
+          roundsByPhase[roundPhase]!.add(round);
+        }
+      }
+      
+      // Create data points for each phase that has rounds
+      for (final phase in [GamePhase.early, GamePhase.mid, GamePhase.end]) {
+        final roundsForPhase = roundsByPhase[phase]!;
+        if (roundsForPhase.isNotEmpty) {
+          final dataPoint = InkastChartDataPoint(
+            date: session.date,
+            handicap: _calculateInkastHandicapForPhase(roundsForPhase),
+            accuracy: _calculateInkastAccuracyForPhase(roundsForPhase),
+            efficiency: _calculateEfficiencyForPhase(roundsForPhase),
+            firstThrowSuccessRate: _calculateFirstThrowSuccessRateForPhase(roundsForPhase),
+            penaltyRate: _calculatePenaltyRateForPhase(roundsForPhase),
+            outOfBoundsPercentage: _calculateOutOfBoundsPercentageForPhase(roundsForPhase),
+            inkastsPerPenaltyRatio: _calculateInkastsPerPenaltyRatioForPhase(roundsForPhase),
+            inkastsPerNeighborRatio: _calculateInkastsPerNeighborRatioForPhase(roundsForPhase),
+          );
+          
+          // Add to appropriate phase bucket based on filter
+          if (_selectedInkastPhase == GamePhase.all || _selectedInkastPhase == phase) {
+            phaseData[phase]!.add(dataPoint);
+          }
+        }
+      }
+    }
+    
+    return phaseData;
+  }
+
+  Map<GamePhase, List<BlastChartDataPoint>> _prepareBlastChartData() {
+    final blastSessions = _allInkastBlastSessions
+        .where((s) => s.isComplete)
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    
+    final Map<GamePhase, List<BlastChartDataPoint>> phaseData = {
+      GamePhase.early: [],
+      GamePhase.mid: [],
+      GamePhase.end: [],
+    };
+    
+    for (final session in blastSessions) {
+      // Group rounds by their individual phases based on kubbs to inkast
+      final Map<GamePhase, List<InkastBlastRound>> roundsByPhase = {
+        GamePhase.early: [],
+        GamePhase.mid: [],
+        GamePhase.end: [],
+      };
+      
+      for (final round in session.rounds) {
+        final roundPhase = _getRoundPhase(round.inkastKubbs);
+        if (roundPhase != GamePhase.all) {
+          roundsByPhase[roundPhase]!.add(round);
+        }
+      }
+      
+      // Create data points for each phase that has rounds
+      for (final phase in [GamePhase.early, GamePhase.mid, GamePhase.end]) {
+        final roundsForPhase = roundsByPhase[phase]!;
+        if (roundsForPhase.isNotEmpty) {
+          final dataPoint = BlastChartDataPoint(
+            date: session.date,
+            accuracy: _calculateBlastAccuracyForPhase(roundsForPhase),
+            efficiency: _calculateEfficiencyForPhase(roundsForPhase),
+            missRate: _calculateBlastMissRateForPhase(roundsForPhase),
+            averageKubbsPerBaton: _calculateEfficiencyForPhase(roundsForPhase),
+            handicap: _calculateBlastHandicapForPhase(roundsForPhase),
+          );
+          
+          // Add to appropriate phase bucket based on filter
+          if (_selectedBlastPhase == GamePhase.all || _selectedBlastPhase == phase) {
+            phaseData[phase]!.add(dataPoint);
+          }
+        }
+      }
+    }
+    
+    return phaseData;
+  }
+
+
+  // ==================== PHASE-SPECIFIC CALCULATIONS ====================
+
+  // Helper methods for calculating metrics by phase (list of rounds)
+  double _calculateInkastHandicapForPhase(List<InkastBlastRound> rounds) {
+    if (rounds.isEmpty) return 0.0;
+    final efficiency = _calculateEfficiencyForPhase(rounds);
+    return (1.0 - efficiency).clamp(0.0, 1.0);
+  }
+
+  double _calculateInkastAccuracyForPhase(List<InkastBlastRound> rounds) {
+    if (rounds.isEmpty) return 0.0;
+    final totalBatons = rounds.fold(0, (sum, r) => sum + r.batonsUsed);
+    final totalHits = rounds.fold(0, (sum, r) => sum + r.totalKubbsKnockedDown);
+    return totalBatons > 0 ? totalHits / totalBatons : 0.0;
+  }
+
+  double _calculateEfficiencyForPhase(List<InkastBlastRound> rounds) {
+    if (rounds.isEmpty) return 0.0;
+    final totalKubbs = rounds.fold(0, (sum, r) => sum + r.totalKubbsKnockedDown);
+    final totalBatons = rounds.fold(0, (sum, r) => sum + r.batonsUsed);
+    return totalBatons > 0 ? totalKubbs / totalBatons : 0.0;
+  }
+
+  double _calculateFirstThrowSuccessRateForPhase(List<InkastBlastRound> rounds) {
+    if (rounds.isEmpty) return 0.0;
+    final totalInkastKubbs = rounds.fold(0, (sum, r) => sum + r.inkastKubbs);
+    final totalClearedFirstThrow = rounds.fold(0, (sum, r) => sum + r.kubbsClearedFirstThrow);
+    return totalInkastKubbs > 0 ? totalClearedFirstThrow / totalInkastKubbs : 0.0;
+  }
+
+  double _calculatePenaltyRateForPhase(List<InkastBlastRound> rounds) {
+    if (rounds.isEmpty) return 0.0;
+    final totalInkastKubbs = rounds.fold(0, (sum, r) => sum + r.inkastKubbs);
+    final totalPenaltyKubbs = rounds.fold(0, (sum, r) => sum + r.penaltyKubbs);
+    return totalInkastKubbs > 0 ? totalPenaltyKubbs / totalInkastKubbs : 0.0;
+  }
+
+  double _calculateOutOfBoundsPercentageForPhase(List<InkastBlastRound> rounds) {
+    if (rounds.isEmpty) return 0.0;
+    final totalOutOfBounds = rounds.fold(0, (sum, r) => sum + r.kubbsOutFirstAttempt + r.kubbsOutSecondAttempt);
+    final totalInkastAttempts = rounds.fold(0, (sum, r) => sum + r.inkastKubbs + r.kubbsOutFirstAttempt + r.kubbsOutSecondAttempt);
+    return totalInkastAttempts > 0 ? totalOutOfBounds / totalInkastAttempts : 0.0;
+  }
+
+  double _calculateInkastsPerPenaltyRatioForPhase(List<InkastBlastRound> rounds) {
+    if (rounds.isEmpty) return 0.0;
+    final totalInkasts = rounds.fold(0, (sum, r) => sum + r.inkastKubbs);
+    final totalPenaltyKubbs = rounds.fold(0, (sum, r) => sum + r.penaltyKubbs);
+    return totalPenaltyKubbs > 0 ? totalInkasts / totalPenaltyKubbs : totalInkasts.toDouble();
+  }
+
+  double _calculateInkastsPerNeighborRatioForPhase(List<InkastBlastRound> rounds) {
+    if (rounds.isEmpty) return 0.0;
+    final totalInkasts = rounds.fold(0, (sum, r) => sum + r.inkastKubbs);
+    final totalNeighborKubbs = rounds.fold(0, (sum, r) => sum + r.neighborKubbs);
+    return totalNeighborKubbs > 0 ? totalInkasts / totalNeighborKubbs : totalInkasts.toDouble();
+  }
+
+  double _calculateBlastAccuracyForPhase(List<InkastBlastRound> rounds) {
+    if (rounds.isEmpty) return 0.0;
+    final totalBatons = rounds.fold(0, (sum, r) => sum + r.batonsUsed);
+    final totalMisses = rounds.fold(0, (sum, r) => sum + r.misses);
+    final totalHits = totalBatons - totalMisses;
+    return totalBatons > 0 ? totalHits / totalBatons : 0.0;
+  }
+
+  double _calculateBlastMissRateForPhase(List<InkastBlastRound> rounds) {
+    if (rounds.isEmpty) return 0.0;
+    final totalBatons = rounds.fold(0, (sum, r) => sum + r.batonsUsed);
+    final totalMisses = rounds.fold(0, (sum, r) => sum + r.misses);
+    return totalBatons > 0 ? totalMisses / totalBatons : 0.0;
+  }
+
+  double _calculateBlastHandicapForPhase(List<InkastBlastRound> rounds) {
+    if (rounds.isEmpty) return 0.0;
+    final efficiency = _calculateEfficiencyForPhase(rounds);
+    return (1.0 - efficiency).clamp(0.0, 1.0);
+  }
+
+  // ==================== PROGRESS CHART BUILDERS ====================
+
+  List<DateTime> _getAllDatesFromPhaseData(Map<GamePhase, List<dynamic>> data) {
+    final allDates = <DateTime>[];
+    for (final phaseData in data.values) {
+      for (final point in phaseData) {
+        if (point.date is DateTime && !allDates.contains(point.date)) {
+          allDates.add(point.date);
+        }
+      }
+    }
+    allDates.sort((a, b) => a.compareTo(b));
+    return allDates;
+  }
+
+  List<FlSpot> _calculateSpotsForPhase<T>(List<T> phaseData, double Function(T) valueExtractor, List<DateTime> allDates) {
+    final spots = <FlSpot>[];
+    for (int i = 0; i < phaseData.length; i++) {
+      final point = phaseData[i];
+      final date = (point as dynamic).date as DateTime?;
+      if (date != null) {
+        final xIndex = allDates.indexOf(date);
+        if (xIndex >= 0) {
+          spots.add(FlSpot(xIndex.toDouble(), valueExtractor(point)));
+        }
+      }
+    }
+    return spots;
+  }
+
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNoDataMessage(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      ),
+    );
+  }
+
+  // Helper method to build lineBarsData for inkast charts
+  List<LineChartBarData> _buildInkastLineBarsData<T>(
+    Map<GamePhase, List<T>> data, 
+    double Function(T) valueExtractor, 
+    List<DateTime> allDates
+  ) {
+    final lineBarsData = <LineChartBarData>[];
+    
+    if (_selectedInkastPhase == GamePhase.all) {
+      // Show all phases with different colors
+      if (data[GamePhase.early]!.isNotEmpty) {
+        lineBarsData.add(
+          LineChartBarData(
+            spots: _calculateSpotsForPhase(data[GamePhase.early]!, valueExtractor, allDates),
+            isCurved: true,
+            color: Colors.green,
+            barWidth: 3,
+            dotData: FlDotData(show: true),
+          ),
+        );
+      }
+      if (data[GamePhase.mid]!.isNotEmpty) {
+        lineBarsData.add(
+          LineChartBarData(
+            spots: _calculateSpotsForPhase(data[GamePhase.mid]!, valueExtractor, allDates),
+            isCurved: true,
+            color: Colors.blue,
+            barWidth: 3,
+            dotData: FlDotData(show: true),
+          ),
+        );
+      }
+      if (data[GamePhase.end]!.isNotEmpty) {
+        lineBarsData.add(
+          LineChartBarData(
+            spots: _calculateSpotsForPhase(data[GamePhase.end]!, valueExtractor, allDates),
+            isCurved: true,
+            color: Colors.deepOrange,
+            barWidth: 3,
+            dotData: FlDotData(show: true),
+          ),
+        );
+      }
+    } else {
+      // Show single line for selected phase
+      if (data[_selectedInkastPhase]!.isNotEmpty) {
+        lineBarsData.add(
+          LineChartBarData(
+            spots: _calculateSpotsForPhase(data[_selectedInkastPhase]!, valueExtractor, allDates),
+            isCurved: true,
+            color: Theme.of(context).primaryColor,
+            barWidth: 3,
+            dotData: FlDotData(show: true),
+          ),
+        );
+      }
+    }
+    
+    return lineBarsData;
+  }
+
+  // Helper method to build lineBarsData for blast charts
+  List<LineChartBarData> _buildBlastLineBarsData<T>(
+    Map<GamePhase, List<T>> data, 
+    double Function(T) valueExtractor, 
+    List<DateTime> allDates
+  ) {
+    final lineBarsData = <LineChartBarData>[];
+    
+    if (_selectedBlastPhase == GamePhase.all) {
+      // Show all phases with different colors
+      if (data[GamePhase.early]!.isNotEmpty) {
+        lineBarsData.add(
+          LineChartBarData(
+            spots: _calculateSpotsForPhase(data[GamePhase.early]!, valueExtractor, allDates),
+            isCurved: true,
+            color: Colors.green,
+            barWidth: 3,
+            dotData: FlDotData(show: true),
+          ),
+        );
+      }
+      if (data[GamePhase.mid]!.isNotEmpty) {
+        lineBarsData.add(
+          LineChartBarData(
+            spots: _calculateSpotsForPhase(data[GamePhase.mid]!, valueExtractor, allDates),
+            isCurved: true,
+            color: Colors.blue,
+            barWidth: 3,
+            dotData: FlDotData(show: true),
+          ),
+        );
+      }
+      if (data[GamePhase.end]!.isNotEmpty) {
+        lineBarsData.add(
+          LineChartBarData(
+            spots: _calculateSpotsForPhase(data[GamePhase.end]!, valueExtractor, allDates),
+            isCurved: true,
+            color: Colors.deepOrange,
+            barWidth: 3,
+            dotData: FlDotData(show: true),
+          ),
+        );
+      }
+    } else {
+      // Show single line for selected phase
+      if (data[_selectedBlastPhase]!.isNotEmpty) {
+        lineBarsData.add(
+          LineChartBarData(
+            spots: _calculateSpotsForPhase(data[_selectedBlastPhase]!, valueExtractor, allDates),
+            isCurved: true,
+            color: Theme.of(context).primaryColor,
+            barWidth: 3,
+            dotData: FlDotData(show: true),
+          ),
+        );
+      }
+    }
+    
+    return lineBarsData;
+  }
+
+  // Helper method to build legend for inkast charts
+  Widget _buildInkastLegend() {
+    if (_selectedInkastPhase == GamePhase.all) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildLegendItem('Early', Colors.green),
+          const SizedBox(width: 16),
+          _buildLegendItem('Mid', Colors.blue),
+          const SizedBox(width: 16),
+          _buildLegendItem('Late', Colors.deepOrange),
+        ],
+      );
+    } else {
+      // No legend needed for single line charts
+      return const SizedBox.shrink();
+    }
+  }
+
+  // Helper method to build legend for blast charts
+  Widget _buildBlastLegend() {
+    if (_selectedBlastPhase == GamePhase.all) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildLegendItem('Early', Colors.green),
+          const SizedBox(width: 16),
+          _buildLegendItem('Mid', Colors.blue),
+          const SizedBox(width: 16),
+          _buildLegendItem('Late', Colors.deepOrange),
+        ],
+      );
+    } else {
+      // No legend needed for single line charts
+      return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildInkastOutOfBoundsChart(Map<GamePhase, List<InkastChartDataPoint>> data) {
+    final allDates = _getAllDatesFromPhaseData(data);
+    
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Out of Bounds %',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(show: true),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            '${value.toInt()}%',
+                            style: const TextStyle(fontSize: 10),
+                          );
+                        },
+                        reservedSize: 40,
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          final allDates = _getAllDatesFromPhaseData(data);
+                          if (value.toInt() < allDates.length) {
+                            return Text(
+                              '${allDates[value.toInt()].month}/${allDates[value.toInt()].day}',
+                              style: const TextStyle(fontSize: 10),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: true),
+                  lineBarsData: _buildInkastLineBarsData(data, (point) => point.outOfBoundsPercentage * 100, allDates),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Dynamic Legend based on filter
+            _buildInkastLegend(),
+            const SizedBox(height: 8),
+            
+            Text(
+              'Percentage of inkasted kubbs that land out of bounds (lower is better)',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInkastPenaltyRatioChart(Map<GamePhase, List<InkastChartDataPoint>> data) {
+    final allDates = _getAllDatesFromPhaseData(data);
+    
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Inkasts per Penalty Ratio',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(show: true),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            value.toStringAsFixed(1),
+                            style: const TextStyle(fontSize: 10),
+                          );
+                        },
+                        reservedSize: 40,
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          if (value.toInt() < allDates.length) {
+                            return Text(
+                              '${allDates[value.toInt()].month}/${allDates[value.toInt()].day}',
+                              style: const TextStyle(fontSize: 10),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: true),
+                  lineBarsData: _buildInkastLineBarsData(data, (point) => point.inkastsPerPenaltyRatio, allDates),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Dynamic Legend based on filter
+            _buildInkastLegend(),
+            const SizedBox(height: 8),
+            
+            Text(
+              'Required inkasts divided by total penalties (higher is better)',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInkastNeighborRatioChart(Map<GamePhase, List<InkastChartDataPoint>> data) {
+    final allDates = _getAllDatesFromPhaseData(data);
+    
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Inkasts per Neighbor Ratio',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(show: true),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            value.toStringAsFixed(1),
+                            style: const TextStyle(fontSize: 10),
+                          );
+                        },
+                        reservedSize: 40,
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          if (value.toInt() < allDates.length) {
+                            return Text(
+                              '${allDates[value.toInt()].month}/${allDates[value.toInt()].day}',
+                              style: const TextStyle(fontSize: 10),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: true),
+                  lineBarsData: _buildInkastLineBarsData(data, (point) => point.inkastsPerNeighborRatio, allDates),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Dynamic Legend based on filter
+            _buildInkastLegend(),
+            const SizedBox(height: 8),
+            
+            Text(
+              'Required inkasts divided by total neighbors (higher is better)',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInkastFirstThrowSuccessChart(Map<GamePhase, List<InkastChartDataPoint>> data) {
+    final allDates = _getAllDatesFromPhaseData(data);
+    
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'First Throw Clear Rate',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(show: true),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            '${value.toInt()}%',
+                            style: const TextStyle(fontSize: 10),
+                          );
+                        },
+                        reservedSize: 40,
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          if (value.toInt() < allDates.length) {
+                            return Text(
+                              '${allDates[value.toInt()].month}/${allDates[value.toInt()].day}',
+                              style: const TextStyle(fontSize: 10),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: true),
+                  lineBarsData: _buildInkastLineBarsData(data, (point) => point.firstThrowSuccessRate * 100, allDates),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Dynamic Legend based on filter
+            _buildInkastLegend(),
+            const SizedBox(height: 8),
+            
+            Text(
+              'Percentage of kubbs cleared on first throw attempt',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBlastAccuracyTrendChart(Map<GamePhase, List<BlastChartDataPoint>> data) {
+    final allDates = _getAllDatesFromPhaseData(data);
+    
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Blast Accuracy',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(show: true),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            '${value.toInt()}%',
+                            style: const TextStyle(fontSize: 10),
+                          );
+                        },
+                        reservedSize: 40,
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          if (value.toInt() < allDates.length) {
+                            return Text(
+                              '${allDates[value.toInt()].month}/${allDates[value.toInt()].day}',
+                              style: const TextStyle(fontSize: 10),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: true),
+                  lineBarsData: _buildBlastLineBarsData(data, (point) => point.accuracy * 100, allDates),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Dynamic Legend based on filter
+            _buildBlastLegend(),
+            const SizedBox(height: 8),
+            
+            Text(
+              'Percentage of batons that hit any target (regardless of kubbs hit)',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBlastKubbsPerBatonChart(Map<GamePhase, List<BlastChartDataPoint>> data) {
+    final allDates = _getAllDatesFromPhaseData(data);
+    
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Kubbs per Baton',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(show: true),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            value.toStringAsFixed(1),
+                            style: const TextStyle(fontSize: 10),
+                          );
+                        },
+                        reservedSize: 40,
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          final allDates = _getAllDatesFromPhaseData(data);
+                          if (value.toInt() < allDates.length) {
+                            return Text(
+                              '${allDates[value.toInt()].month}/${allDates[value.toInt()].day}',
+                              style: const TextStyle(fontSize: 10),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: true),
+                  lineBarsData: _buildBlastLineBarsData(data, (point) => point.efficiency, allDates),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Dynamic Legend based on filter
+            _buildBlastLegend(),
+            const SizedBox(height: 8),
+            
+            Text(
+              'Average number of kubbs knocked down per baton',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBlastMissRateChart(Map<GamePhase, List<BlastChartDataPoint>> data) {
+    final allDates = _getAllDatesFromPhaseData(data);
+    
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Miss Rate Analysis',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(show: true),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            '${value.toInt()}%',
+                            style: const TextStyle(fontSize: 10),
+                          );
+                        },
+                        reservedSize: 40,
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          if (value.toInt() < allDates.length) {
+                            return Text(
+                              '${allDates[value.toInt()].month}/${allDates[value.toInt()].day}',
+                              style: const TextStyle(fontSize: 10),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: true),
+                  lineBarsData: _buildBlastLineBarsData(data, (point) => point.missRate * 100, allDates),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Dynamic Legend based on filter
+            _buildBlastLegend(),
+            const SizedBox(height: 8),
+            
+            Text(
+              'Percentage of batons that miss completely (lower is better)',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBlastHandicapChart(Map<GamePhase, List<BlastChartDataPoint>> data) {
+    final allDates = _getAllDatesFromPhaseData(data);
+    
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Handicap Analysis',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(show: true),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            value.toStringAsFixed(2),
+                            style: const TextStyle(fontSize: 10),
+                          );
+                        },
+                        reservedSize: 40,
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          if (value.toInt() < allDates.length) {
+                            return Text(
+                              '${allDates[value.toInt()].month}/${allDates[value.toInt()].day}',
+                              style: const TextStyle(fontSize: 10),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: true),
+                  lineBarsData: _buildBlastLineBarsData(data, (point) => point.handicap, allDates),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Dynamic Legend based on filter
+            _buildBlastLegend(),
+            const SizedBox(height: 8),
+            
+            Text(
+              'Performance handicap based on efficiency (lower is better)',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildRoundProgressionAnalysisForSessions(List<PracticeSession> sessions) {
     final progression = _calculateRoundProgressionForSessions(sessions);
@@ -2639,6 +4362,114 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     if (accuracy >= 0.5) return Colors.orange;
     return Colors.red;
   }
+
+  // ==================== LIFETIME AND RECENT CALCULATIONS ====================
+
+  // Inkasting calculations
+  double _calculateLifetimeOutOfBounds(List<InkastBlastSession> sessions) {
+    if (sessions.isEmpty) return 0.0;
+    final totalOutOfBounds = sessions.fold(0, (sum, s) => sum + s.kubbsOutOfBounds);
+    final totalInkastAttempts = sessions.fold(0, (sum, s) => sum + s.totalInkastKubbs + s.kubbsOutOfBounds);
+    return totalInkastAttempts > 0 ? (totalOutOfBounds / totalInkastAttempts) * 100 : 0.0;
+  }
+
+  double _calculateRecentOutOfBounds(List<InkastBlastSession> sessions) {
+    return _calculateLifetimeOutOfBounds(sessions);
+  }
+
+  double _calculateLifetimeFirstThrowSuccess(List<InkastBlastSession> sessions) {
+    if (sessions.isEmpty) return 0.0;
+    
+    int totalKubbsInBounds = 0;
+    int totalClearedFirstThrow = 0;
+    
+    for (final session in sessions) {
+      for (final round in session.rounds) {
+        // Kubbs in bounds after inkasting (total inkast kubbs minus out of bounds)
+        final kubbsInBounds = round.inkastKubbs - round.kubbsOutFirstAttempt - round.kubbsOutSecondAttempt;
+        totalKubbsInBounds += kubbsInBounds;
+        
+        // Kubbs cleared with first baton throw
+        if (round.batonThrows.isNotEmpty) {
+          final firstThrow = round.batonThrows.first;
+          if (firstThrow.isHit) {
+            totalClearedFirstThrow += firstThrow.kubbsHit;
+          }
+        }
+      }
+    }
+    
+    return totalKubbsInBounds > 0 ? (totalClearedFirstThrow / totalKubbsInBounds) * 100 : 0.0;
+  }
+
+  double _calculateRecentFirstThrowSuccess(List<InkastBlastSession> sessions) {
+    return _calculateLifetimeFirstThrowSuccess(sessions);
+  }
+
+  double _calculateLifetimeInkastsPerPenalty(List<InkastBlastSession> sessions) {
+    if (sessions.isEmpty) return 0.0;
+    final totalInkasts = sessions.fold(0, (sum, s) => sum + s.totalInkastKubbs);
+    final totalPenalties = sessions.fold(0, (sum, s) => sum + s.totalPenaltyKubbs);
+    return totalPenalties > 0 ? totalInkasts / totalPenalties : totalInkasts.toDouble();
+  }
+
+  double _calculateRecentInkastsPerPenalty(List<InkastBlastSession> sessions) {
+    return _calculateLifetimeInkastsPerPenalty(sessions);
+  }
+
+  double _calculateLifetimeInkastsPerNeighbor(List<InkastBlastSession> sessions) {
+    if (sessions.isEmpty) return 0.0;
+    final totalInkasts = sessions.fold(0, (sum, s) => sum + s.totalInkastKubbs);
+    final totalNeighbors = sessions.fold(0, (sum, s) => sum + s.totalNeighborKubbs);
+    return totalNeighbors > 0 ? totalInkasts / totalNeighbors : totalInkasts.toDouble();
+  }
+
+  double _calculateRecentInkastsPerNeighbor(List<InkastBlastSession> sessions) {
+    return _calculateLifetimeInkastsPerNeighbor(sessions);
+  }
+
+  // Blasting calculations
+  double _calculateLifetimeBlastAccuracy(List<InkastBlastSession> sessions) {
+    if (sessions.isEmpty) return 0.0;
+    final totalBatons = sessions.fold(0, (sum, s) => sum + s.totalBatonsUsed);
+    final totalMisses = sessions.fold(0, (sum, s) => sum + s.totalMisses);
+    final totalHits = totalBatons - totalMisses;
+    return totalBatons > 0 ? (totalHits / totalBatons) * 100 : 0.0;
+  }
+
+  double _calculateRecentBlastAccuracy(List<InkastBlastSession> sessions) {
+    return _calculateLifetimeBlastAccuracy(sessions);
+  }
+
+  double _calculateLifetimeKubbsPerBaton(List<InkastBlastSession> sessions) {
+    if (sessions.isEmpty) return 0.0;
+    final totalKubbs = sessions.fold(0, (sum, s) => sum + s.totalKubbsKnockedDown);
+    final totalBatons = sessions.fold(0, (sum, s) => sum + s.totalBatonsUsed);
+    return totalBatons > 0 ? totalKubbs / totalBatons : 0.0;
+  }
+
+  double _calculateRecentKubbsPerBaton(List<InkastBlastSession> sessions) {
+    return _calculateLifetimeKubbsPerBaton(sessions);
+  }
+
+  double _calculateLifetimeMissRate(List<InkastBlastSession> sessions) {
+    if (sessions.isEmpty) return 0.0;
+    final totalBatons = sessions.fold(0, (sum, s) => sum + s.totalBatonsUsed);
+    final totalMisses = sessions.fold(0, (sum, s) => sum + s.totalMisses);
+    return totalBatons > 0 ? (totalMisses / totalBatons) * 100 : 0.0;
+  }
+
+  double _calculateRecentMissRate(List<InkastBlastSession> sessions) {
+    return _calculateLifetimeMissRate(sessions);
+  }
+
+  double _calculateLifetimeHandicap(List<InkastBlastSession> sessions) {
+    return _calculateHandicap(sessions);
+  }
+
+  double _calculateRecentHandicap(List<InkastBlastSession> sessions) {
+    return sessions.isNotEmpty ? _calculateHandicap(sessions) : 0.0;
+  }
 }
 
 // Data classes
@@ -2731,12 +4562,30 @@ class PersonalRecords {
   final int longestStreak;
   final int perfectRounds;
   final int mostBaselineClears;
+  final int bestAroundThePitchScore;
 
   PersonalRecords({
     required this.bestSessionAccuracy,
     required this.longestStreak,
     required this.perfectRounds,
     required this.mostBaselineClears,
+    required this.bestAroundThePitchScore,
+  });
+}
+
+class InkastBlastPersonalRecords {
+  final int totalNeighbors;
+  final int totalALines;
+  final double overallHandicapEarly;
+  final double overallHandicapMid;
+  final double overallHandicapEnd;
+
+  InkastBlastPersonalRecords({
+    required this.totalNeighbors,
+    required this.totalALines,
+    required this.overallHandicapEarly,
+    required this.overallHandicapMid,
+    required this.overallHandicapEnd,
   });
 }
 
@@ -2821,3 +4670,48 @@ class PhaseStatistics {
     required this.handicap,
   });
 }
+
+// ==================== PROGRESS CHART DATA CLASSES ====================
+
+class InkastChartDataPoint {
+  final DateTime date;
+  final double handicap;
+  final double accuracy;
+  final double efficiency;
+  final double firstThrowSuccessRate;
+  final double penaltyRate;
+  final double outOfBoundsPercentage;
+  final double inkastsPerPenaltyRatio;
+  final double inkastsPerNeighborRatio;
+
+  InkastChartDataPoint({
+    required this.date,
+    required this.handicap,
+    required this.accuracy,
+    required this.efficiency,
+    required this.firstThrowSuccessRate,
+    required this.penaltyRate,
+    required this.outOfBoundsPercentage,
+    required this.inkastsPerPenaltyRatio,
+    required this.inkastsPerNeighborRatio,
+  });
+}
+
+class BlastChartDataPoint {
+  final DateTime date;
+  final double accuracy;
+  final double efficiency;
+  final double missRate;
+  final double averageKubbsPerBaton;
+  final double handicap;
+
+  BlastChartDataPoint({
+    required this.date,
+    required this.accuracy,
+    required this.efficiency,
+    required this.missRate,
+    required this.averageKubbsPerBaton,
+    required this.handicap,
+  });
+}
+
